@@ -3,6 +3,10 @@ title: "ST310 coursework - NBA Career Longevity"
 author: "Anastasia, Ayo and Suneet"
 date: "January 2022"
 output: html_document
+# output: # uncomment before handing in
+#   html_document:
+#     toc: true
+#     toc_float: true
 ---
 
 ```{r setup, include=FALSE}
@@ -10,7 +14,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
 library(kableExtra)
-library(dplyr)
+#library(dplyr) # included in tidyverse
 library(tree)
 ```
 
@@ -39,7 +43,7 @@ kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed",
 
 ```
 
-# Preparing the data
+# Data preparation
 
 ### Create indicator variables
 
@@ -47,9 +51,34 @@ kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed",
 
 ```
 
-# Baseline model
+# Analysis
 
-### A single tree classifier based on few predictors
+### Comparing means of successful and unsuccessful players for each predictor variable
+
+To get a sense of which predictors are likely to be most useful, for each predictor, we compare the mean values of players who went on to be successful (TARGET_5Yrs = 1) and those who did not (TARGET_5Yrs = 0)
+
+
+```{r} 
+all_vars <- data_in %>%
+  select(-Name, -Round_Drafted, -Team, -Position, -Win_Perc, -X3P.) %>% 
+  pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value") %>% 
+  group_by(TARGET_5Yrs, variable) %>% 
+  summarise(mean = mean(value)) %>% 
+  group_by(variable) %>% 
+  pivot_wider(names_from = TARGET_5Yrs, values_from = mean) %>% 
+  ungroup() %>% 
+  rename("under_five_years" = "0", "over_five_years" = "1") %>% 
+  mutate(percent_diff = 100*(over_five_years/under_five_years - 1)) %>% 
+  mutate_if(is.numeric, ~round(., 2)) %>% 
+  arrange(-percent_diff)
+
+kable(all_vars) %>%
+kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed", "responsive")) %>%
+  scroll_box(height = "300px")
+
+```
+
+### Baseline model - a single tree classifier based on few predictors
 
 ```{r}
 #only interested to classify by GP, PTS, REB, Win_Perc
