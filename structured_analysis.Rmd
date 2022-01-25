@@ -7,7 +7,7 @@ output: rmdformats::readthedown
 
 # Introduction
 
-```{r setup, include=TRUE}
+```{r setup, message=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
@@ -18,8 +18,9 @@ library(caret)
 #library(dplyr) # part of tidyverse
 #library(ggplot2) # part of tidyverse
 library(fastDummies)
-library(corrplot)
+#library(corrplot)
 library(prettydoc)
+
 ```
 
 
@@ -27,46 +28,106 @@ This dataset contains the key performance metrics of NBA players in their rookie
 
 The objective of this project is to build a classification model to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
 
-Our two classes of interest are therefore:
-
-•	0 – Players who played fewer than 5 years in the league
-
-•	1 – Players who played 5 or more years in the league
-
 This data was collected from https://data.world/exercises/logistic-regression-exercise-1
 
 Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that teams record at the end of the season was web-scraped from Wikipedia using a python script not included in this document.
 
 Before being web-scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/
 
-
-# Part 1: Exploratory Data Analysis (EDA)
+# Part 1: Exploratory Data Analysis (EDA) of raw data
 
 We will start by performing Exploratory Data Analysis on the given dataset.
 The aims of EDA in our case will be to:
-* Task 1 - Determine how the predictors relate to one another
-* Task 2
-* Task 3
 
-## Preview of the raw dataset (post-web scraping):
+  1) Determine how the predictors relate to one another
+  2) 
+  3)
+
+## Variable descriptions
+
+### Outcome
+**TARGET_5Yrs**: Dummy variable, with value 1 for players who went on to play 5 or more years in the league, and 0 for those that did not
+
+
+### Predictors
+  1) **GP**	- Games played		
+  2) **MIN**	- Minutes played		
+  3) **PTS**	- Points per game		
+  4) **FGM**	- Field goals made		
+  5) **FGA**	- Field goal attempts		
+  6) **FG%**	- Field goal percent		
+  7) **3P Made** - Three-pointers made		
+  8) **3PA**	- Three-pointers attempted		
+  9) **3P%**	- Three-point attempt percentage?		
+  10) **FTM**	- Free throws made		
+  11) **FTA**	- Free throws attempted		
+  12) **FT%**	- Free throw percent?		
+  13) **OREB**	- Offensive rebounds		
+  14) **DREB**	- Defensive rebounds		
+  15) **REB**	- Rebounds		
+  16) **AST**	- Assists		
+  17) **STL**	- Steals		
+  18) **BLK**	- Blocks		
+  19) **TOV**	- Turnovers		
+  20) **Year_Drafted** - 			
+  21) **Round_Drafted**	- 		
+  22) **Team**	- Team played for		
+  23) **Win_Perc**	- Win percentage		
+  24) **Position**	- Poisition		
+  25) **Year_Debut**	
+
+## Preview data
 ```{r}
 raw_data <- read.csv("data_in/nba_logreg.csv")
-
-kable(raw_data[1:5, ]) %>%
-kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed", "responsive")) %>%
-scroll_box(width = "800px")
+kable(head(raw_data)) # %>%
+#  kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed", "responsive")) 
+# # scroll_box(width = "800px")
 ```
 
-## Available predictor variables
+## Summary statistics
+
+Using the powerful "summary" function, we can check each column for missing, negative (where there shouldn't be), infinite and anomalous values. We can also make sure all values fall within the expected ranges for particular variables (year drafted, win percentage etc.), using the minimum and maximum statistics. 
+
+```{r}
+summary(raw_data)
+```
+
+**Insights:**
+
+  1) The character variables, name, round drafted, team and position, all have the expected number of observations (1301).
+  2) Values for year drafted and year debut are all in the expected range (between 1971 and 2016)
+  3) Values for win percentage are all between 0 and 1, as expected
+  4) TARGET_5Yrs takes values between 0 and 1, with a mean of 0.6287, implying 62.87% (818) of the players reached 5 years, and 37.13% (483) did not
+  5) A small number of NAs are present in the expected 3 pointers and win percentage columns. These will need to be considered when using these variables later on.
 
 
+## Correlations between regressors and outcome variable
+Analysis for continuous variables: histograms/boxplots (ggplot)
+Analysis for categorical variables: bar plots, correlation matrix
 
 
+```{r}
+corr_matrix = round(cor(raw_data$TARGET_5Yrs, Filter(is.numeric, raw_data), use = "complete.obs"),2)
+kable(corr_matrix)
+```
 
-**The outcome of interest**
-Description.
+## Distributions of variables, by outcome
 
-## Preparing the dataset:
+```{r, fig.height= 10, fig.width = 10, warning=FALSE}
+raw_numerics_long <- Filter(is.numeric, raw_data) %>% 
+  pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value")
+raw_numerics_long$TARGET_5Yrs <- as.character(raw_numerics_long$TARGET_5Yrs)
+
+boxplot <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free")
+histogram <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free")
+
+boxplot
+histogram
+  
+```
+
+
+## Preparing the dataset
 **Create indicator variables**
 
 
@@ -89,24 +150,10 @@ data <- read.csv("data_in/nba_logreg_Final_including_dummies.csv")
 ```
 
 
-### Checking for any missing or infinite values:
-
 ```{r}
-apply(data, 2, function(x) any(is.na(x))) # No NA values
-```
+# Code leading to the final dataset
 
-```{r}
-apply(data, 2, function(x) any(is.infinite(x))) # No Inf values
-```
+corr_matrix = cor(Filter(is.numeric, raw_data))
+corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45)
 
-### Analysis for every predictor
-Analysis for continuous variables: histograms/boxplots (ggplot)
-Analysis for categorical variables: bar plots, correlation matrix
-
-
-```{r}
-# Correlation matrix - Code is not correct
-
-# data_for_cor_matrix = data.matrix(data_no_dummies)
-# corrplot(cor(data_for_cor_matrix))
 ```
