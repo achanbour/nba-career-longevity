@@ -1,0 +1,112 @@
+---
+title: "NBA Career Longevity Prediction"
+author: "Anastasia, Ayo and Suneet"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: rmdformats::readthedown
+---
+
+# Introduction
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(kableExtra)
+library(tree)
+library(broom)
+library(caret)
+#library(dplyr) # part of tidyverse
+#library(ggplot2) # part of tidyverse
+library(fastDummies)
+library(corrplot)
+library(prettydoc)
+```
+
+
+This dataset contains the key performance metrics of NBA players in their rookie (first) season in the NBA League and additional information about how they entered the league (The NBA Draft and the teams they were drafted to).
+
+The objective of this project is to build a classification model to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
+
+Our two classes of interest are therefore:
+
+•	0 – Players who played fewer than 5 years in the league
+
+•	1 – Players who played 5 or more years in the league
+
+This data was collected from https://data.world/exercises/logistic-regression-exercise-1
+
+Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that teams record at the end of the season was web-scraped from Wikipedia using a python script not included in this document.
+
+Before being web-scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/
+
+
+# Part 1: Exploratory Data Analysis (EDA)
+
+We will start by performing Exploratory Data Analysis on the given dataset.
+The aims of EDA in our case will be to:
+* Task 1 - Determine how the predictors relate to one another
+* Task 2
+* Task 3
+
+## Preview of the raw dataset (post-web scraping):
+```{r}
+raw_data <- read.csv("data_in/nba_logreg.csv")
+
+kable(raw_data[1:5, ]) %>%
+kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed", "responsive")) %>%
+scroll_box(width = "800px")
+```
+
+## Available predictor variables
+
+
+
+
+
+**The outcome of interest**
+Description.
+
+## Preparing the dataset:
+**Create indicator variables**
+
+
+```{r}
+# Read the Raw-Data from the webscraper into R
+data_no_dummies <- read.csv("data_in/nba_logreg_post_webscrape.csv")
+
+# Use the fastDummies library to convert the columsn "Round_Drafted" and "Position" into their own respective indicator variables
+data_with_dummies <- fastDummies::dummy_cols(data_no_dummies, select_columns = c("Round_Drafted", "Position"), remove_selected_columns = TRUE)
+
+# Write a CSV file using this dataset to create the final dataset used for analysis
+write.csv(data_with_dummies, "data_in/nba_logreg_Final_including_dummies.csv", row.names = FALSE)
+```
+
+Read final dataset including dummies
+```{r}
+# Code leading to the final dataset
+
+data <- read.csv("data_in/nba_logreg_Final_including_dummies.csv")
+```
+
+
+### Checking for any missing or infinite values:
+
+```{r}
+apply(data, 2, function(x) any(is.na(x))) # No NA values
+```
+
+```{r}
+apply(data, 2, function(x) any(is.infinite(x))) # No Inf values
+```
+
+### Analysis for every predictor
+Analysis for continuous variables: histograms/boxplots (ggplot)
+Analysis for categorical variables: bar plots, correlation matrix
+
+
+```{r}
+# Correlation matrix - Code is not correct
+
+# data_for_cor_matrix = data.matrix(data_no_dummies)
+# corrplot(cor(data_for_cor_matrix))
+```
