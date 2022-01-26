@@ -1,5 +1,5 @@
 # HTML from knit Rmd
-.html
+*.html
 
 # History files
 .Rhistory

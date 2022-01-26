@@ -1,13 +1,13 @@
 ---
 title: "NBA Career Longevity Prediction"
-author: "Anastasia, Ayo and Suneet"
+author: "12345, 56789, 26183"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: rmdformats::readthedown
 ---
 
 # Introduction
 
-```{r setup, message=FALSE, warning=FALSE}
+```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
@@ -17,8 +17,8 @@ library(broom)
 library(caret)
 #library(dplyr) # part of tidyverse
 #library(ggplot2) # part of tidyverse
-library(fastDummies)
-#library(corrplot)
+#library(fastDummies) # replaced by pivot_wider 
+# library(corrplot) # possibly not doing a corr plot
 library(prettydoc)
 
 ```
@@ -111,7 +111,7 @@ corr_matrix = round(cor(raw_data$TARGET_5Yrs, Filter(is.numeric, raw_data), use 
 kable(corr_matrix)
 ```
 
-## Distributions of variables, by outcome
+## Distributions of numeric variables, by outcome
 
 ```{r, fig.height= 10, fig.width = 10, warning=FALSE}
 raw_numerics_long <- Filter(is.numeric, raw_data) %>% 
@@ -126,6 +126,65 @@ histogram
   
 ```
 
+## Distributions of categoric variables, by outcome
+
+```{r}
+# raw_categorics_long <- raw_data %>% 
+#   select(TARGET_5Yrs, Round_Drafted, Team, Position) %>%
+#   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value") %>% 
+#   group_by(variable, value, TARGET_5Yrs) %>% 
+#   summarise(sum = n())
+# 
+# raw_categorics_long$TARGET_5Yrs <- as.character(raw_categorics_long$TARGET_5Yrs)
+# 
+# bar_chart <- ggplot(raw_categorics_long, aes(sum, fill = value)) + geom_bar() + facet_wrap(~variable, scales = "free")  
+# 
+# bar_chart
+
+bar_plot = function(variable){
+  data <- raw_data[,c("TARGET_5Yrs",variable)] 
+  colnames(data)[2] = "variable"
+  data <- data %>%
+    group_by(TARGET_5Yrs, variable) %>%
+    tally()
+  
+  data$TARGET_5Yrs <- as.character(data$TARGET_5Yrs)
+#  data$var <- as.character(data$var)
+  
+  print(data %>% ggplot(aes(x = variable , y = n , fill = TARGET_5Yrs))+
+    geom_bar(stat = "identity", width = 0.4, position = position_dodge(width = 0.5)))
+}
+
+variables = c("Round_Drafted","Team","Position")
+
+for (i in variables){
+  bar_plot(i)
+}  
+
+
+  
+```
+
+```{r}
+
+
+
+# corr_matrix = cor(Filter(is.numeric, raw_data))
+# corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45)
+
+```
+
+```{r}
+# Filter(Negate(is.numeric), raw_data) %>%
+#   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value")
+# raw_numerics_long$TARGET_5Yrs <- as.character(raw_numerics_long$TARGET_5Yrs)
+# 
+# boxplot <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free")
+# histogram <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free")
+# 
+# boxplot
+# histogram
+```
 
 ## Preparing the dataset
 **Create indicator variables**
@@ -135,11 +194,23 @@ histogram
 # Read the Raw-Data from the webscraper into R
 data_no_dummies <- read.csv("data_in/nba_logreg_post_webscrape.csv")
 
-# Use the fastDummies library to convert the columsn "Round_Drafted" and "Position" into their own respective indicator variables
-data_with_dummies <- fastDummies::dummy_cols(data_no_dummies, select_columns = c("Round_Drafted", "Position"), remove_selected_columns = TRUE)
+# # Use the fastDummies library to convert the columsn "Round_Drafted" and "Position" into their own respective indicator variables
+# data_with_dummies <- fastDummies::dummy_cols(data_no_dummies, select_columns = c("Round_Drafted", "Position"), remove_selected_columns = TRUE)
+
+data_with_dummies <- data_no_dummies %>% 
+  mutate(n = 1) %>% 
+  pivot_wider(names_from = Round_Drafted, values_from = n,
+              names_prefix = 'round_drafted_', values_fill = list(n = 0)) %>% 
+  mutate(n = 1) %>% 
+  pivot_wider(names_from = Position, values_from = n,
+              names_prefix = 'position_', values_fill = list(n = 0))
 
 # Write a CSV file using this dataset to create the final dataset used for analysis
 write.csv(data_with_dummies, "data_in/nba_logreg_Final_including_dummies.csv", row.names = FALSE)
+
+
+
+
 ```
 
 Read final dataset including dummies
@@ -147,13 +218,4 @@ Read final dataset including dummies
 # Code leading to the final dataset
 
 data <- read.csv("data_in/nba_logreg_Final_including_dummies.csv")
-```
-
-
-```{r}
-# Code leading to the final dataset
-
-corr_matrix = cor(Filter(is.numeric, raw_data))
-corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45)
-
 ```
