@@ -5,43 +5,35 @@ date: "`r format(Sys.time(), '%d %B %Y')`"
 output: rmdformats::readthedown
 ---
 
-# Introduction
-
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+#knitr::opts_chunk$set(echo = TRUE)
 
-library(tidyverse)
+#library(tidyverse)
 library(kableExtra)
 library(tree)
-library(broom)
+#library(broom) # tidymodels
 library(caret)
-#library(dplyr) # part of tidyverse
-#library(ggplot2) # part of tidyverse
-#library(fastDummies) # replaced by pivot_wider 
+#library(dplyr) # tidymodels
+#library(ggplot2) # tidymodels
+#library(fastDummies) # pivot_wider 
 # library(corrplot) # possibly not doing a corr plot
 library(prettydoc)
+library(tidymodels)
 
+raw_data <- read.csv("data_in/nba_logreg.csv")
 ```
 
+# I: Project Introduction
 
 This dataset contains the key performance metrics of NBA players in their rookie (first) season in the NBA League and additional information about how they entered the league (The NBA Draft and the teams they were drafted to).
 
-The objective of this project is to build a classification model to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
+The objective of this project is to build some classification models to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
 
-This data was collected from https://data.world/exercises/logistic-regression-exercise-1
+This dataset was collected from https://data.world/exercises/logistic-regression-exercise-1
 
-Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that teams record at the end of the season was web-scraped from Wikipedia using a python script not included in this document.
+Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that team's record at the end of the season was web scraped from Wikipedia using a Python script not included in this document.
 
-Before being web-scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/
-
-# Part 1: Exploratory Data Analysis (EDA) of raw data
-
-We will start by performing Exploratory Data Analysis on the given dataset.
-The aims of EDA in our case will be to:
-
-  1) Determine how the predictors relate to one another
-  2) 
-  3)
+Before being web scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/ ???
 
 ## Variable descriptions
 
@@ -76,13 +68,16 @@ The aims of EDA in our case will be to:
   24) **Position**	- Poisition		
   25) **Year_Debut**	
 
-## Preview data
+## Preview raw data
 ```{r}
-raw_data <- read.csv("data_in/nba_logreg.csv")
 kable(head(raw_data)) # %>%
 #  kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed", "responsive")) 
 # # scroll_box(width = "800px")
+
+glimpse(raw_data)
 ```
+
+# II: Exploratory Data Analysis (EDA) of raw data
 
 ## Summary statistics
 
@@ -98,17 +93,29 @@ summary(raw_data)
   2) Values for year drafted and year debut are all in the expected range (between 1971 and 2016)
   3) Values for win percentage are all between 0 and 1, as expected
   4) TARGET_5Yrs takes values between 0 and 1, with a mean of 0.6287, implying 62.87% (818) of the players reached 5 years, and 37.13% (483) did not
-  5) A small number of NAs are present in the expected 3 pointers and win percentage columns. These will need to be considered when using these variables later on.
-
-
-## Correlations between regressors and outcome variable
-Analysis for continuous variables: histograms/boxplots (ggplot)
-Analysis for categorical variables: bar plots, correlation matrix
-
+  
+5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 respectively). Given this is less than 1% of the sample size, we make the decision to drop observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy:
 
 ```{r}
-corr_matrix = round(cor(raw_data$TARGET_5Yrs, Filter(is.numeric, raw_data), use = "complete.obs"),2)
-kable(corr_matrix)
+data <- na.omit(raw_data) 
+sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(data))
+```
+
+## Correlations between regressors and outcome variable
+
+As a simple way to get a sense of which of the numeric regressors are most likely to be have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
+
+```{r}
+kable(round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)) # round to 2 d.p. and pretty-print
+```
+
+```{r corrplot}
+
+
+
+# corr_matrix = cor(Filter(is.numeric, raw_data))
+# corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45)
+
 ```
 
 ## Distributions of numeric variables, by outcome
@@ -118,13 +125,11 @@ raw_numerics_long <- Filter(is.numeric, raw_data) %>%
   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value")
 raw_numerics_long$TARGET_5Yrs <- as.character(raw_numerics_long$TARGET_5Yrs)
 
-boxplot <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free")
-histogram <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free")
-
-boxplot
-histogram
-  
+ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free") + labs(x = "")
+ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "")
 ```
+
+We see that for most variables, the distribution of values for players who went on to succeed is higher. This makes sense, as most of these variables are increasing in player quality (the better player is expected to make more blocks, steals etc.) 
 
 ## Distributions of categoric variables, by outcome
 
@@ -165,57 +170,42 @@ for (i in variables){
   
 ```
 
+
+# III: Pre-process dataset
+
+### Create indicator variables
+
+Using tidymodels "step_dummy_multi_choice" function, create dummy columns for the two categoric variables (Round Drafted and Position)
+
 ```{r}
+# data_to_split <- data %>% 
+#   mutate(n = 1) %>% 
+#   pivot_wider(names_from = Round_Drafted, values_from = n,
+#               names_prefix = 'round_drafted_', values_fill = list(n = 0)) %>% 
+#   mutate(n = 1) %>% 
+#   pivot_wider(names_from = Position, values_from = n,
+#               names_prefix = 'position_', values_fill = list(n = 0))
 
+dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
+  step_dummy_multi_choice(Round_Drafted, "Position") %>%
+  prep()
 
-
-# corr_matrix = cor(Filter(is.numeric, raw_data))
-# corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45)
-
+data_to_split <- bake(dummy_multi_choice_rec, new_data = data)
+#ids <- tidy(dummy_multi_choice_rec, number = 1)
+  
 ```
 
-```{r}
-# Filter(Negate(is.numeric), raw_data) %>%
-#   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value")
-# raw_numerics_long$TARGET_5Yrs <- as.character(raw_numerics_long$TARGET_5Yrs)
-# 
-# boxplot <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free")
-# histogram <- ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free")
-# 
-# boxplot
-# histogram
-```
+### Split dataset into training and testing
 
-## Preparing the dataset
-**Create indicator variables**
-
+Using tidymodels "initial_split" function, split data into training and testing, using (the default) 75% of observations for training and 25% for testing.
 
 ```{r}
-# Read the Raw-Data from the webscraper into R
-data_no_dummies <- read.csv("data_in/nba_logreg_post_webscrape.csv")
+set.seed(1423)
+data_split <- initial_split(data_to_split)
 
-# # Use the fastDummies library to convert the columsn "Round_Drafted" and "Position" into their own respective indicator variables
-# data_with_dummies <- fastDummies::dummy_cols(data_no_dummies, select_columns = c("Round_Drafted", "Position"), remove_selected_columns = TRUE)
+data_training <- data_split %>%
+  training()
 
-data_with_dummies <- data_no_dummies %>% 
-  mutate(n = 1) %>% 
-  pivot_wider(names_from = Round_Drafted, values_from = n,
-              names_prefix = 'round_drafted_', values_fill = list(n = 0)) %>% 
-  mutate(n = 1) %>% 
-  pivot_wider(names_from = Position, values_from = n,
-              names_prefix = 'position_', values_fill = list(n = 0))
-
-# Write a CSV file using this dataset to create the final dataset used for analysis
-write.csv(data_with_dummies, "data_in/nba_logreg_Final_including_dummies.csv", row.names = FALSE)
-
-
-
-
-```
-
-Read final dataset including dummies
-```{r}
-# Code leading to the final dataset
-
-data <- read.csv("data_in/nba_logreg_Final_including_dummies.csv")
+data_testing <- data_split %>%
+  testing()
 ```
