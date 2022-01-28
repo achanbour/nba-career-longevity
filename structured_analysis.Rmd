@@ -175,7 +175,7 @@ for (i in variables){
 
 ### Create indicator variables
 
-Using tidymodels "step_dummy_multi_choice" function, create dummy columns for the two categoric variables (Round Drafted and Position)
+Using tidymodels "step_dummy_multi_choice" function, create dummy columns for the three categoric variables (Team, Round Drafted and Position)
 
 ```{r, warning=FALSE}
 # data_to_split <- data %>% 
@@ -187,7 +187,8 @@ Using tidymodels "step_dummy_multi_choice" function, create dummy columns for th
 #               names_prefix = 'position_', values_fill = list(n = 0))
 
 dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
-  step_dummy_multi_choice(Round_Drafted, "Position") %>%
+  step_dummy(Team) %>%
+  step_dummy(Position) %>%
   prep()
 
 data_to_split <- bake(dummy_multi_choice_rec, new_data = data)
