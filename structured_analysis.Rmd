@@ -177,7 +177,7 @@ for (i in variables){
 
 Using tidymodels "step_dummy_multi_choice" function, create dummy columns for the two categoric variables (Round Drafted and Position)
 
-```{r}
+```{r, warning=FALSE}
 # data_to_split <- data %>% 
 #   mutate(n = 1) %>% 
 #   pivot_wider(names_from = Round_Drafted, values_from = n,
@@ -192,7 +192,9 @@ dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
 
 data_to_split <- bake(dummy_multi_choice_rec, new_data = data)
 #ids <- tidy(dummy_multi_choice_rec, number = 1)
-  
+
+kable(head(data_to_split))
+glimpse(data_to_split)
 ```
 
 ### Split dataset into training and testing
@@ -208,4 +210,6 @@ data_training <- data_split %>%
 
 data_testing <- data_split %>%
   testing()
+
+sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)", nrow(data), nrow(data_training), nrow(data_testing))
 ```
