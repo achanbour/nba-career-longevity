@@ -1,7 +1,7 @@
 ---
 title: "NBA Career Longevity Prediction"
 author: "12345, 56789, 26183"
-date: "`r format(Sys.time(), '%d %B %Y')`"
+date: "`r format(Sys.time(), '%B %Y')`"
 output: rmdformats::readthedown
 ---
 
@@ -173,7 +173,7 @@ for (i in variables){
 
 # III: Pre-process dataset
 
-### Create indicator variables
+## Create indicator variables
 
 Using tidymodels "step_dummy_multi_choice" function, create dummy columns for the three categoric variables (Team, Round Drafted and Position)
 
@@ -198,13 +198,13 @@ kable(head(data_to_split))
 glimpse(data_to_split) #
 ```
 
-### Split dataset into training and testing
+## Split dataset into training and testing
 
 Using tidymodels "initial_split" function, split data into training and testing, using (the default) 75% of observations for training and 25% for testing.
 
 ```{r}
 set.seed(1423)
-data_split <- initial_split(data_to_split)
+data_split <- initial_split(data_to_split, strata = TARGET_5Yrs)
 
 data_training <- data_split %>%
   training()
@@ -213,4 +213,7 @@ data_testing <- data_split %>%
   testing()
 
 sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)", nrow(data), nrow(data_training), nrow(data_testing))
+
+data_testing %>% group_by(TARGET_5Yrs) %>% summarise(n = n()) %>% mutate(prop = n/sum(n))
+data_training %>% group_by(TARGET_5Yrs) %>% summarise(n = n()) %>% mutate(prop = n/sum(n))
 ```
