@@ -1,0 +1,41 @@
+Variable,Description,Predictive_Importance,Further_Explanation
+Name,Name,NA,NA
+GP,Games played,NA,NA
+MIN,Minutes played,NA,NA
+PTS,Points per game,NA,NA
+FGM,Field goals made,NA,NA
+FGA,Field goal attempts,NA,NA
+FG.,Field goal percent,NA,NA
+X3P.Made,Three-pointers made,Difference in means between the two target group is small so no significant predictive power,NA
+X3PA,Three-pointers attempted,NA,NA
+X3P.,Three-point attempt percentage?,NA,NA
+FTM,Free throws made,NA,NA
+FTA,Free throws attempted,NA,NA
+FT.,Free throw percent?,NA,NA
+OREB,Offensive rebounds,NA,NA
+DREB,Defensive rebounds,NA,NA
+REB,Rebounds,NA,NA
+AST,Assists,NA,NA
+STL,Steals,NA,NA
+BLK,Blocks,NA,NA
+TOV,Turnovers,NA,NA
+TARGET_5Yrs,"Outcome: 1 if career length >= 5 years, 0 otherwise",NA,NA
+Year_Drafted,Year drafted,NA,NA
+Round_Drafted,Round drafted,NA,NA
+Team,Team played for,NA,NA
+Win_Perc,Win percentage,NA,NA
+Year_Debut,Year career debuted,NA,NA
+Round_Drafted_1,1st round draft,NA,NA
+Round_Drafted_10,10th round draft,NA,NA
+Round_Drafted_3,3rd round draft,NA,NA
+Round_Drafted_4,4th round draft,NA,NA
+Round_Drafted_5,5th round draft,NA,NA
+Round_Drafted_6,6th round draft,NA,NA
+Round_Drafted_7,7th round draft,NA,NA
+Round_Drafted_8,8th round draft,NA,NA
+Round_Drafted_Undrafted,"Outcome: 1 if round_drafted_x = 0 for all x, 0 otherwise",NA,NA
+Position_Center,"Outcome: 1 if position is center, 0 otherwise",NA,NA
+Position_Point guard,"Outcome: 1 if position is point guard, 0 otherwise",NA,NA
+Position_Power forward,"Outcome: 1 if position is power forward, 0 otherwise",NA,NA
+Position_Shooting guard,"Outcome 1: if position is shooting guard, 0 otherwise",NA,NA
+Position_Small forward,"Outcome 1: if position is small forward, 0 otherwise",NA,NA
