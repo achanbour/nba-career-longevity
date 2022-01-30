@@ -28,6 +28,9 @@ library(gmodels)
 # KNN
 library(class)
 
+# TREE
+library(rpart.plot)
+
 raw_data <- read.csv("data_in/nba_logreg.csv")
 ```
 
@@ -240,6 +243,13 @@ sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)"
 
 kable(data_testing %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
 kable(data_training %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
+
+set.seed(1450)
+## undummied
+data_split_undummied <- initial_split(data, strata = TARGET_5Yrs)
+
+data_training_undummied <- data_split_undummied %>% training()
+data_testing_undummied <- data_split_undummied %>% testing()
 ```
 
 # IV: Model development
@@ -407,3 +417,25 @@ CrossTable(x= data.matrix(Test_Outcome), y= KNN_Predicted, prop.chisq = FALSE, c
 ```
 
 accuracy on test data = 73.45679%
+
+```{r}
+
+data_training_undummied$TARGET_5Yrs <- as.factor(data_training_undummied$TARGET_5Yrs)
+
+tree <- decision_tree() %>%
+  set_engine("rpart") %>% 
+  set_mode("classification") %>% 
+  fit(TARGET_5Yrs ~ ., data = data_training_undummied)
+
+tree %>%
+  extract_fit_engine() %>%
+  rpart.plot(type = 5, extra = 7)
+
+predictions <- tree %>%
+  predict(data_testing_undummied) %>%
+  bind_cols(data_testing_undummied)
+predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs)
+metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class)
+```
+
+# V: Conclusion
