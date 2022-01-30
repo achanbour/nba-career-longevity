@@ -139,12 +139,12 @@ As we have a large number of predictors, this information may be used when decid
 ## Distributions of numeric variables, by outcome
 
 ```{r, fig.height= 10, fig.width = 10, warning=FALSE}
-raw_numerics_long <- Filter(is.numeric, raw_data) %>% 
+numerics_long <- Filter(is.numeric, data) %>% 
   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value")
-raw_numerics_long$TARGET_5Yrs <- as.character(raw_numerics_long$TARGET_5Yrs)
+numerics_long$TARGET_5Yrs <- as.character(numerics_long$TARGET_5Yrs)
 
-ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free") + labs(x = "")
-# ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "")
+ggplot(numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free") + labs(x = "")
+# ggplot(numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "")
 ```
 
 We see that for most variables, the distribution of values for players who went on to succeed is higher. This makes sense, as most of these variables are increasing in player quality (the better player is expected to make more blocks, steals etc.) 
