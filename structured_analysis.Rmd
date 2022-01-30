@@ -1,6 +1,6 @@
 ---
 title: "NBA Career Longevity Prediction"
-author: "Candidates: 12345, 56789, 26183"
+author: "Candidates: 26183, 33349, 34803"
 date: "`r format(Sys.time(), '%B %Y')`"
 output: rmdformats::readthedown
 ---
@@ -19,6 +19,14 @@ library(caret)
 library(corrplot) # possibly not doing a corr plot
 library(prettydoc)
 library(tidymodels)
+
+# LASSO 
+library(kernlab)
+library(glmnet)
+library(gmodels)
+
+# KNN
+library(class)
 
 raw_data <- read.csv("data_in/nba_logreg.csv")
 ```
@@ -98,10 +106,10 @@ kable(raw_data %>% select(TARGET_5Yrs) %>% group_by(TARGET_5Yrs) %>% tally() %>%
   4) From the second table, 63% (818) of the players in the sample reached 5 years, and 37% (483) did not
   
 5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 observations respectively). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
-We also drop the player names at this point, as they serve no purpose in our analysis:
+We also drop the player and team names at this point, as they serve no purpose in our analysis (the team should be captured by the team win percentage variable):
 
 ```{r omit_nas}
-data <- na.omit(raw_data) %>% select(-Name)
+data <- na.omit(raw_data) %>% select(-Name, -Team)
 sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(data))
 ```
 
@@ -179,7 +187,7 @@ bar_plot = function(variable){
     geom_bar(stat = "identity", width = 0.4, position = position_dodge(width = 0.5)))
 }
 
-variables = c("Round_Drafted","Team","Position")
+variables = c("Round_Drafted","Position")
 
 for (i in variables){
   bar_plot(i)
@@ -194,7 +202,7 @@ for (i in variables){
 
 ## Create indicator variables
 
-Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Team and Position)
+Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position)
 
 ```{r, warning=FALSE}
 # data_to_split <- data %>%
@@ -206,7 +214,7 @@ Using the "step_dummy" function from recipes (part of tidymodels), create dummy 
 #               names_prefix = 'position_', values_fill = list(n = 0))
 
 dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
-  step_dummy(Team) %>%
+  step_dummy(Round_Drafted) %>%
   step_dummy(Position) %>%
   prep()
 
@@ -233,36 +241,169 @@ sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)"
 kable(data_testing %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
 kable(data_training %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
 ```
-<!-- ```{r} -->
 
-<!-- # set.seed(1423) -->
-<!-- # data_split <- initial_split(data) -->
-<!-- # Train <- data_split %>% -->
-<!-- #   training() -->
-<!-- # Test <- data_split %>% -->
-<!-- #   testing() -->
+# IV: Model development
 
-<!-- train_data_num <- data_to_split -->
-<!-- train_data_num$TARGET_5Yrs <- as.character(train_data_num$TARGET_5Yrs) -->
-<!-- random_forest <- train(as.matrix(TARGET_5Yrs) ~ ., data = train_data_num, method="rf") -->
+## Lasso
+  - Relatively interpretable 
+  - High Dimensionality 
 
-<!-- ``` -->
+The first step is to take all of the appropriate variables from our dataset and separate the regressors and our outcome variable. 
+
+```{r}
+# Train_data_KNN <- data_training %>%
+#   select(X3P.,Win_Perc,GP,MIN,PTS,FG.,FT.,OREB,DREB,AST,STL,BLK,TOV,Year_Drafted, starts_with("Round_Drafted"),starts_with("Position"))
+
+# Test_data_KNN <- data_testing %>%
+#   select(X3P.,Win_Perc,GP,MIN,PTS,FG.,FT.,OREB,DREB,AST,STL,BLK,TOV,Year_Drafted, starts_with("Round_Drafted"),starts_with("Position"))
+
+Train_data_KNN <- data_training %>%
+  select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
+
+Test_data_KNN <- data_testing %>%
+  select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
+
+Train_Outcome <- data_training %>% select(TARGET_5Yrs)
+Test_Outcome <- data_testing %>% select(TARGET_5Yrs)
+```
 
 
-<!-- ```{r} -->
-<!-- data_training$TARGET_5Yrs <- as.factor(data_training$TARGET_5Yrs) -->
+With 34 different regressors, this may not be the optimal set of regressors for our model. We want to complete some process of subset selection to not only draw some inference about what variables may be more significant, but also reduce the dimensionality of the KNN model as KNN is susceptible to the curse of dimensionality. 
 
-<!-- rf <- rand_forest(trees = 500, mode = "classification") %>% -->
-<!--   set_engine("randomForest") %>% -->
-<!--   fit(TARGET_5Yrs ~ ., data = data_training) -->
+Additionally, in 1989 the structure of the draft changed from 10 rounds to just 2. In order to avoid having to remove data values, but still accurately represent the significance of being drafted, we will need to create a time dummy variable and add interaction terms to the Round_Drafted_# dummy variables. 
 
-<!-- predictions <- rf %>% -->
-<!--   predict(data_testing) %>% -->
-<!--   bind_cols(data_testing) #%>% -->
-<!-- #  glimpse() -->
 
-<!-- predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs) -->
+```{r}
+# Create Dummy variables for Year_debut_1989
+Train_data_KNN$Year_debut_before_1989 <- ifelse(data_training$Year_Debut >= 1989, 0, 1)
+Test_data_KNN$Year_debut_before_1989 <- ifelse(data_testing$Year_Debut >= 1989, 0, 1)
 
-<!-- metrics(predictions, truth = TARGET_5Yrs, estimate = .pred_class) -->
+# Create Interaction terms for Round_Drafted_# and Year_debut_before_1989
+Train_data_KNN$Round_Drafted_1_before1989 <- Train_data_KNN$Round_Drafted_X1*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_2_before1989 <- Train_data_KNN$Round_Drafted_X2*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_3_before1989 <- Train_data_KNN$Round_Drafted_X3*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_4_before1989 <- Train_data_KNN$Round_Drafted_X4*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_5_before1989 <- Train_data_KNN$Round_Drafted_X5*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_6_before1989 <- Train_data_KNN$Round_Drafted_X6*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_7_before1989 <- Train_data_KNN$Round_Drafted_X7*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_8_before1989 <- Train_data_KNN$Round_Drafted_X8*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_10_before1989 <- Train_data_KNN$Round_Drafted_X10*Train_data_KNN$Year_debut_before_1989
+Train_data_KNN$Round_Drafted_Undrafted_before1989 <- Train_data_KNN$Round_Drafted_U*Train_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_1_before1989 <- Test_data_KNN$Round_Drafted_X1*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_2_before1989 <- Test_data_KNN$Round_Drafted_X2*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_3_before1989 <- Test_data_KNN$Round_Drafted_X3*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_4_before1989 <- Test_data_KNN$Round_Drafted_X4*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_5_before1989 <- Test_data_KNN$Round_Drafted_X5*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_6_before1989 <- Test_data_KNN$Round_Drafted_X6*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_7_before1989 <- Test_data_KNN$Round_Drafted_X7*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_8_before1989 <- Test_data_KNN$Round_Drafted_X8*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_10_before1989 <- Test_data_KNN$Round_Drafted_X10*Test_data_KNN$Year_debut_before_1989
+Test_data_KNN$Round_Drafted_Undrafted_before1989 <- Test_data_KNN$Round_Drafted_U*Test_data_KNN$Year_debut_before_1989
+```
 
-<!-- ``` -->
+Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
+
+```{r}
+#Esimate the Lasso Regression Model 
+model_lasso <- glmnet(data.matrix(Train_data_KNN), y = data.matrix(Train_Outcome), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
+#Plot the Lasso Regression Model against Log Lambda Values
+plot(model_lasso, xvar = "lambda")
+```
+
+```{r}
+beta_hat <- coef(model_lasso)
+#Return the coefficients of the Lasso Regression Model for the different values of Lambda 
+beta_hat
+```
+
+
+Find the optimal value of Lambda
+```{r}
+# The code below estimates the value for Lambda that gives the largest area beneath the ROC (Receiver Operating Characteristic) Curve. These areas are esimated using K-fold cross Validation. 
+cv_lasso <- cv.glmnet(x = data.matrix(Train_data_KNN), y = data.matrix(Train_Outcome), type.measure = "auc" , nfolds = 10)
+lambda = cv_lasso$lambda.min
+#Return the coefficients associated with the model that produces the largest area under the ROC curve in the training data. 
+beta_hat2 <- coef(model_lasso, s = lambda)
+plot(cv_lasso)
+print(beta_hat2)
+```
+
+### Analysis of the Lasso model above 
+
+
+Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penality increases. 
+
+Most Notably: Win_Perc (Win Percentage of Team in Debut Season),GP (Number of Games Played in Debut Season), MIN (Average Number of Minutes played per game), PTS (Average Number of Points per Game), FG. (Field Goal Percentage) , OREB (Average Offensive Rebounds per Game), AST (Average Number of Assists per Game), Year_Drafted (Year Drafted), Round_Drafted_1 (Dummy Variable for Players Drafted in Round 1)
+
+
+One could develop a convincing story to justify the coefficients displayed above: 
+
+Teams that win more games with a particular group will be more likely to keep most of those players, espcially the main contributers. Therefore, we should not be surprised that the coefficients for Win Percentage and Number of Games Played are positive and relatively large. 
+
+What perhaps is most interesting is the fact that Defensive Rebounds, Steals and Turnovers seem to have a relatively insignificant impact on a player's ability to reach year 5. Whilst there are players who pride themselves on their ability to defend (E.g. Draymond Green), in reality the structure of the game lends itself far more to incentivise scoring more points as opposed to defending more points. 
+
+
+Important to note that we cannot consider this regression causal. Our dataset has not been collected randomly and we cannot consider our dataset as good as randomly selected as there are still cofounding variables that have not been accounted for. 
+
+For example, we do not know if players may have been played through injuries or been injured in their final college season. This lack of information muddies any interpretation we can make on the data above. 
+
+-A good example of this is a player not in our dataset Markelle Fultz. Markelle was drafted first overall in the 2017 NBA draft but had a terrible season after developing a neurogenic syndrome that inhibited his shooting motion. Despite this, Markelle played the entire season and put up terrible numbers. 
+  
+Our current specificaiton does not accurately capture circumstances where confounding variables like injury/ health, team chemistry / personality fit or off-the-field status can impact the likelihood of a player reaching year 5. 
+  
+
+When considering the effect of Round Drafted:
+
+$$
+\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 \\
+
+(\beta_1 \ +   \beta_2Year\_Debuted\_Before\_1989 )Round\_Drafted\_\# \\ 
+
+Where: \\ 
+   
+Year\_Debuted\_Before\_1989 = 
+     \begin{cases}
+       1 &\quad\text{if Year_Debut}<0\\
+       0 &\quad\text{if Year_Debut} \ge1989 \\
+     \end{cases}
+$$
+
+In other words, the effect for players drafted after 1989 is captured by \beta_1 and players drafted before 1989 is captured by \beta_1 + \beta_2
+ 
+ 
+The data suggests a clear association between being drafted in the first round and the likelihood of making it to year 5. This is consistent with the notion that players drafted in the first round will have performed better in college or international leagues before they declared for the draft. You could argue that the round a player is drafted functions as a good proxy for the expectations for a player coming into the league. 
+
+
+ - Compare this model with baseline models:
+    * Logistic Regression
+    * Trees 
+    
+  
+
+
+## KNN
+  - Predictive Accuracy without interpretability 
+
+
+Using the results from the Lasso Regression, we want choose the following subset of regressors to train our KNN model: Win_Perc,GP, MIN, PTS, FG., OREB, AST, Year_Drafted, Round_Drafted_1
+
+Given that KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables as possible whilst trying to gain the most information from each variable to improve the predictive accuracy of the model. 
+
+Looking at the Lasso results above, this subset of regressors seems to be represent that variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
+
+
+```{r}
+Adj_Train_data_KNN <- data_training %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1")
+Adj_Test_data_KNN <- data_testing %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1")
+```
+
+```{r}
+KNN_Predicted <- knn(train = data.matrix(Adj_Train_data_KNN), test = data.matrix(Adj_Test_data_KNN), cl = data.matrix(Train_Outcome), k = 25)
+CrossTable(x= data.matrix(Test_Outcome), y= KNN_Predicted, prop.chisq = FALSE, chisq = TRUE)
+```
+
+```{r}
+(62+176)/324*100
+```
+
+accuracy on test data = 73.45679%
