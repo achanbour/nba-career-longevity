@@ -1,6 +1,6 @@
 ---
 title: "NBA Career Longevity Prediction"
-author: "12345, 56789, 26183"
+author: "Candidates: 12345, 56789, 26183"
 date: "`r format(Sys.time(), '%B %Y')`"
 output: rmdformats::readthedown
 ---
@@ -16,7 +16,7 @@ library(caret)
 #library(dplyr) # tidymodels
 #library(ggplot2) # tidymodels
 #library(fastDummies) # pivot_wider 
-# library(corrplot) # possibly not doing a corr plot
+library(corrplot) # possibly not doing a corr plot
 library(prettydoc)
 library(tidymodels)
 
@@ -27,7 +27,7 @@ raw_data <- read.csv("data_in/nba_logreg.csv")
 
 This dataset contains the key performance metrics of NBA players in their rookie (first) season in the NBA League and additional information about how they entered the league (The NBA Draft and the teams they were drafted to).
 
-The objective of this project is to build some classification models to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
+The objective of this project is to build classification models to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
 
 This dataset was collected from https://data.world/exercises/logistic-regression-exercise-1
 
@@ -38,66 +38,70 @@ Before being web scraped, the dataset was checked for repeated values and missin
 ## Variable descriptions
 
 ### Outcome
-**TARGET_5Yrs**: Dummy variable, with value 1 for players who went on to play 5 or more years in the league, and 0 for those that did not
-
+**TARGET_5Yrs**: Dummy variable with value 1 for players who went on to play 5 or more years in the league, and 0 for those that did not
 
 ### Predictors
-  1) **GP**	- Games played		
-  2) **MIN**	- Minutes played		
-  3) **PTS**	- Points per game		
-  4) **FGM**	- Field goals made		
-  5) **FGA**	- Field goal attempts		
-  6) **FG%**	- Field goal percent		
-  7) **3P Made** - Three-pointers made		
-  8) **3PA**	- Three-pointers attempted		
-  9) **3P%**	- Three-point attempt percentage?		
-  10) **FTM**	- Free throws made		
-  11) **FTA**	- Free throws attempted		
-  12) **FT%**	- Free throw percent?		
-  13) **OREB**	- Offensive rebounds		
-  14) **DREB**	- Defensive rebounds		
-  15) **REB**	- Rebounds		
-  16) **AST**	- Assists		
-  17) **STL**	- Steals		
-  18) **BLK**	- Blocks		
-  19) **TOV**	- Turnovers		
-  20) **Year_Drafted** - 			
-  21) **Round_Drafted**	- 		
-  22) **Team**	- Team played for		
-  23) **Win_Perc**	- Win percentage		
-  24) **Position**	- Poisition		
-  25) **Year_Debut**	
+  1) **GP**	- Games played [integer]
+  2) **MIN**	- Average minutes played per game [numeric]
+  3) **PTS**	- Average points per game	[numeric]	
+  4) **FGM**	- Average field goals made per game [numeric]		
+  5) **FGA**	- Average field goal attempts	[numeric]	
+  6) **FG%**	- Average field goal success percentage [numeric]		
+  7) **3P Made** - Average three-pointers made per game [numeric]	
+  8) **3PA**	- Average three-pointers attempted per game [numeric]		
+  9) **3P%**	- Average three-pointer success percentage per game	[numeric]	
+  10) **FTM**	- Average free throws made per game [numeric]		
+  11) **FTA**	- Average free throws attempted per game	[numeric]	
+  12) **FT%**	- Average free throw success percentage	[numeric]	
+  13) **OREB**	- Average offensive rebounds per game [numeric]		
+  14) **DREB**	- Average defensive rebounds per game [numeric]		
+  15) **REB**	- Average rebounds per game [numeric]				
+  16) **AST**	- Average assists per game [numeric]				
+  17) **STL**	- Average steals per game [numeric]				
+  18) **BLK**	- Average blocks per game [numeric]				
+  19) **TOV**	- Average turnovers per game [numeric]				
+  20) **Year_Drafted** - Year of draft [integer]		
+  21) **Round_Drafted**	- Round of draft [character - contains 'U' for undrafted]		
+  22) **Team** - Team played for [character]	
+  23) **Win_Perc** - Team's win percentage [numeric] DECIMAL		
+  24) **Position** - Position played in [character]		
+  25) **Year_Debut** - Year of debut [integer]
 
 ## Preview raw data
-```{r}
+```{r preview_raw}
+sprintf("%s observations of %s variables", nrow(raw_data), ncol(raw_data))
 kable(head(raw_data)) # %>%
 #  kable_styling(bootstrap_options = c("striped", "bordered", "hover", "condensed", "responsive")) 
 # # scroll_box(width = "800px")
-
-glimpse(raw_data)
+#glimpse(raw_data)
+#str(raw_data)
 ```
 
 # II: Exploratory Data Analysis (EDA) of raw data
 
 ## Summary statistics
 
-Using the powerful "summary" function, we can check each column for missing, negative (where there shouldn't be), infinite and anomalous values. We can also make sure all values fall within the expected ranges for particular variables (year drafted, win percentage etc.), using the minimum and maximum statistics. 
+Using the powerful "summary" function, we can check each column for missing, negative (where there shouldn't be), infinite and anomalous values. We can also make sure all values fall within obvious expected ranges for particular variables (year drafted, win percentage etc.), using the minimum and maximum statistics. 
 
-```{r}
+```{r summary_statistics}
 summary(raw_data)
+# counts of outcome variable
+kable(raw_data %>% select(TARGET_5Yrs) %>% group_by(TARGET_5Yrs) %>% tally() %>%
+        mutate(proportion = round(n/sum(n),2)))
 ```
 
 **Insights:**
 
-  1) The character variables, name, round drafted, team and position, all have the expected number of observations (1301).
-  2) Values for year drafted and year debut are all in the expected range (between 1971 and 2016)
-  3) Values for win percentage are all between 0 and 1, as expected
-  4) TARGET_5Yrs takes values between 0 and 1, with a mean of 0.6287, implying 62.87% (818) of the players reached 5 years, and 37.13% (483) did not
+  1) Values for year drafted and year debut are all in the expected range (between 1971 and 2016)
+  2) Values for win percentage are all between 0 and 1, as expected
+  3) The character variables (name, round drafted, team and position) all have the expected number of observations (1301).
+  4) From the second table, 63% (818) of the players in the sample reached 5 years, and 37% (483) did not
   
-5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 respectively). Given this is less than 1% of the sample size, we make the decision to drop observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy:
+5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 observations respectively). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
+We also drop the player names at this point, as they serve no purpose in our analysis:
 
-```{r}
-data <- na.omit(raw_data) 
+```{r omit_nas}
+data <- na.omit(raw_data) %>% select(-Name)
 sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(data))
 ```
 
@@ -105,18 +109,32 @@ sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(d
 
 As a simple way to get a sense of which of the numeric regressors are most likely to be have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
 
-```{r}
-kable(round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)) # round to 2 d.p. and pretty-print
-```
-
-```{r corrplot}
-
-
-
-# corr_matrix = cor(Filter(is.numeric, raw_data))
-# corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45)
+```{r corr_regressors_with_outcome}
+correlations <- round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)
+correlations[,order(abs(correlations),decreasing = TRUE)]
+# kable(round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)) # round to 2 d.p. and pretty-print
+# 
+# test[,order(abs(test),decreasing = TRUE)]
 
 ```
+
+While the correlation coefficient only measures linear relationships, we conclude that metrics involving three-pointers, and years of draft and debut, are likely to be poor predictors of success. Interestingly, so too is team win percentage - suggesting players cannot simply ride the coattails of their team to achieve individual success.
+
+As we have a large number of predictors, this information may be used when deciding which predictors to include in certain models. 
+
+<!-- ```{r corrs_between_regressors} -->
+<!-- library(plotly) -->
+
+<!-- corr_matrix = cor(Filter(is.numeric, raw_data)) -->
+<!-- corr_matrix_diagonal = corr_matrix -->
+<!-- corr_matrix_diagonal[lower.tri(corr_matrix_diagonal, diag = TRUE)] <- NA -->
+<!-- corr_matrix_diagonal <- corr_matrix_diagonal[-1, -ncol(corr_matrix_diagonal)] -->
+<!-- #corr_matrix = cor(raw_data %>%  select(TOV, BLK)) -->
+<!-- corrplot(corr_matrix , type = "upper", tl.col = "black" , tl.srt = 45) -->
+
+<!-- plot_ly(x = rownames(corr_matrix), y = colnames(corr_matrix), z = corr_matrix_diagonal, type = "heatmap") -->
+
+<!-- ``` -->
 
 ## Distributions of numeric variables, by outcome
 
@@ -126,7 +144,7 @@ raw_numerics_long <- Filter(is.numeric, raw_data) %>%
 raw_numerics_long$TARGET_5Yrs <- as.character(raw_numerics_long$TARGET_5Yrs)
 
 ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free") + labs(x = "")
-ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "")
+# ggplot(raw_numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "")
 ```
 
 We see that for most variables, the distribution of values for players who went on to succeed is higher. This makes sense, as most of these variables are increasing in player quality (the better player is expected to make more blocks, steals etc.) 
@@ -151,12 +169,13 @@ bar_plot = function(variable){
   colnames(data)[2] = "variable"
   data <- data %>%
     group_by(TARGET_5Yrs, variable) %>%
-    tally()
+    tally() %>% 
+    mutate(proportion = n/sum(n))
   
   data$TARGET_5Yrs <- as.character(data$TARGET_5Yrs)
 #  data$var <- as.character(data$var)
   
-  print(data %>% ggplot(aes(x = variable , y = n , fill = TARGET_5Yrs))+
+  print(data %>% ggplot(aes(x = variable , y = proportion, fill = TARGET_5Yrs))+
     geom_bar(stat = "identity", width = 0.4, position = position_dodge(width = 0.5)))
 }
 
@@ -175,14 +194,14 @@ for (i in variables){
 
 ## Create indicator variables
 
-Using tidymodels "step_dummy_multi_choice" function, create dummy columns for the three categoric variables (Team, Round Drafted and Position)
+Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Team and Position)
 
 ```{r, warning=FALSE}
-# data_to_split <- data %>% 
-#   mutate(n = 1) %>% 
+# data_to_split <- data %>%
+#   mutate(n = 1) %>%
 #   pivot_wider(names_from = Round_Drafted, values_from = n,
-#               names_prefix = 'round_drafted_', values_fill = list(n = 0)) %>% 
-#   mutate(n = 1) %>% 
+#               names_prefix = 'round_drafted_', values_fill = list(n = 0)) %>%
+#   mutate(n = 1) %>%
 #   pivot_wider(names_from = Position, values_from = n,
 #               names_prefix = 'position_', values_fill = list(n = 0))
 
@@ -191,29 +210,59 @@ dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
   step_dummy(Position) %>%
   prep()
 
-data_to_split <- bake(dummy_multi_choice_rec, new_data = data)
+data_to_split <- bake(dummy_multi_choice_rec, new_data = data) #%>% select(-Name)
 #ids <- tidy(dummy_multi_choice_rec, number = 1)
 
 kable(head(data_to_split))
-glimpse(data_to_split) #
+# glimpse(data_to_split) #
 ```
 
 ## Split dataset into training and testing
 
-Using tidymodels "initial_split" function, split data into training and testing, using (the default) 75% of observations for training and 25% for testing.
+Using the "initial_split" function from rsample (part of tidymodels), split data into training and testing, using (the default) 75% of observations for training and 25% for testing. The same data and samples will be used by all models. To preserve the overall class distribution, we stratify on the outcome variable (TARGET_5Yrs).
 
 ```{r}
 set.seed(1423)
 data_split <- initial_split(data_to_split, strata = TARGET_5Yrs)
 
-data_training <- data_split %>%
-  training()
-
-data_testing <- data_split %>%
-  testing()
+data_training <- data_split %>% training()
+data_testing <- data_split %>% testing()
 
 sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)", nrow(data), nrow(data_training), nrow(data_testing))
 
-data_testing %>% group_by(TARGET_5Yrs) %>% summarise(n = n()) %>% mutate(prop = n/sum(n))
-data_training %>% group_by(TARGET_5Yrs) %>% summarise(n = n()) %>% mutate(prop = n/sum(n))
+kable(data_testing %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
+kable(data_training %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
 ```
+<!-- ```{r} -->
+
+<!-- # set.seed(1423) -->
+<!-- # data_split <- initial_split(data) -->
+<!-- # Train <- data_split %>% -->
+<!-- #   training() -->
+<!-- # Test <- data_split %>% -->
+<!-- #   testing() -->
+
+<!-- train_data_num <- data_to_split -->
+<!-- train_data_num$TARGET_5Yrs <- as.character(train_data_num$TARGET_5Yrs) -->
+<!-- random_forest <- train(as.matrix(TARGET_5Yrs) ~ ., data = train_data_num, method="rf") -->
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- data_training$TARGET_5Yrs <- as.factor(data_training$TARGET_5Yrs) -->
+
+<!-- rf <- rand_forest(trees = 500, mode = "classification") %>% -->
+<!--   set_engine("randomForest") %>% -->
+<!--   fit(TARGET_5Yrs ~ ., data = data_training) -->
+
+<!-- predictions <- rf %>% -->
+<!--   predict(data_testing) %>% -->
+<!--   bind_cols(data_testing) #%>% -->
+<!-- #  glimpse() -->
+
+<!-- predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs) -->
+
+<!-- metrics(predictions, truth = TARGET_5Yrs, estimate = .pred_class) -->
+
+<!-- ``` -->
