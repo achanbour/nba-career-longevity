@@ -463,6 +463,26 @@ The data suggests a clear association between being drafted in the first round a
 
 
 ## KNN
+
+```{r tidymodels_knn}
+data_training_KNN <- data_training_lasso %>%
+  select(GP, MIN, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1, Round_Drafted_1_before_1989) %>% 
+  bind_cols(outcome_training)
+
+data_testing_KNN <- data_testing_lasso %>%
+  select(GP, MIN, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1, Round_Drafted_1_before_1989) %>% 
+  bind_cols(outcome_testing)
+
+knn <- nearest_neighbor(mode = "classification", engine = "kknn") %>% 
+  fit(TARGET_5Yrs ~., data = data_training_KNN)
+
+predictions <- knn %>%
+  predict(data_testing_KNN) %>%
+  bind_cols(data_testing_KNN)
+predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs)
+metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class)
+```
+
   - Predictive Accuracy without interpretability 
 
 
