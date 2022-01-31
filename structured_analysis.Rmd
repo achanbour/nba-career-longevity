@@ -32,6 +32,7 @@ library(class)
 library(rpart.plot)
 
 raw_data <- read.csv("data_in/nba_logreg.csv")
+raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs)
 ```
 
 # I: Project Introduction
@@ -74,7 +75,7 @@ Before being web scraped, the dataset was checked for repeated values and missin
   20) **Year_Drafted** - Year of draft [integer]		
   21) **Round_Drafted**	- Round of draft [character - contains 'U' for undrafted]		
   22) **Team** - Team played for [character]	
-  23) **Win_Perc** - Team's win percentage [numeric] DECIMAL		
+  23) **Win_Percentage** - Team's win percentage [numeric]
   24) **Position** - Position played in [character]		
   25) **Year_Debut** - Year of debut [integer]
 
@@ -90,30 +91,61 @@ kable(head(raw_data)) # %>%
 
 # II: Exploratory Data Analysis (EDA) of raw data
 
-## Summary statistics
+## Summary statistics 
 
 Using the powerful "summary" function, we can check each column for missing, negative (where there shouldn't be), infinite and anomalous values. We can also make sure all values fall within obvious expected ranges for particular variables (year drafted, win percentage etc.), using the minimum and maximum statistics. 
 
 ```{r summary_statistics}
 summary(raw_data)
 # counts of outcome variable
-kable(raw_data %>% select(TARGET_5Yrs) %>% group_by(TARGET_5Yrs) %>% tally() %>%
-        mutate(proportion = round(n/sum(n),2)))
+#kable(raw_data %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n),2)))
 ```
 
 **Insights:**
 
   1) Values for year drafted and year debut are all in the expected range (between 1971 and 2016)
-  2) Values for win percentage are all between 0 and 1, as expected
+  2) Values for win percentage are all between 0 and 100, as expected
   3) The character variables (name, round drafted, team and position) all have the expected number of observations (1301).
-  4) From the second table, 63% (818) of the players in the sample reached 5 years, and 37% (483) did not
+  4) Using the TARGET_5Yrs variable, we see that 818 (63%) of players in the sample reached 5 years, and 483 37% did not
   
 5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 observations respectively). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
-We also drop the player and team names at this point, as they serve no purpose in our analysis (the team should be captured by the team win percentage variable):
+We drop the player names at this point, as they will serve no purpose in our analysis. We also drop the team names, as most of the predictive power of the team should be captured by the team win percentage variable (which is far easier to work with than 30 dummy variables for the teams):
 
 ```{r omit_nas}
 data <- na.omit(raw_data) %>% select(-Name, -Team)
 sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(data))
+```
+
+## Check character variable values
+
+Summarise does a good job of making sure the numeric values all fall within the expected ranges. However, non-numeric variables can also contain errors. We check for this by getting the distinct values for the two remaining columns with character type (Round Drafted and Position)
+
+```{r check_character_variable_values}
+data %>% distinct(Round_Drafted) %>% arrange(Round_Drafted)
+data %>% distinct(Position) %>% arrange(Position)
+```
+We find a number of issues which need addressing
+
+**Round drafted**
+  - There are two different representations of U (undrafted), because one of them has a trailing space
+  - Our dataset doesn't contain any players that were drafted in round 9. This is noted but not likely to cause issues, and is because a) the sample is quite small, and b) round 9 didn't exist past 1989. This will be discussed again later on.
+  
+**Position**
+  - Again, there are two different representations of Center, due to a trailing space
+  - There are two different representations of Point guard, this time due to a letter case
+  
+We now fix these issues:
+
+```{r fix_character_variable_values}
+# remove any leading or trailing whitespace in chracter columns
+data <- data.frame(lapply(data, function(x) if(class(x)=="character") trimws(x) else(x)), stringsAsFactors=F)
+
+# replace 'Point Guard' with 'Point guard'
+data$Position[data$Position == "Point Guard"] <- "Point guard"
+
+# check it worked
+data %>% distinct(Round_Drafted) %>% arrange(Round_Drafted)
+data %>% distinct(Position) %>% arrange(Position)
 ```
 
 ## Correlations between regressors and outcome variable
@@ -121,7 +153,7 @@ sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(d
 As a simple way to get a sense of which of the numeric regressors are most likely to be have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
 
 ```{r corr_regressors_with_outcome}
-correlations <- round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)
+correlations <- round(cor(as.numeric(data$TARGET_5Yrs), Filter(is.numeric, data)),2)
 correlations[,order(abs(correlations),decreasing = TRUE)]
 # kable(round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)) # round to 2 d.p. and pretty-print
 # 
@@ -147,59 +179,87 @@ As we have a large number of predictors, this information may be used when decid
 
 <!-- ``` -->
 
-## Distributions of numeric variables, by outcome
+<!-- ## Distributions of numeric variables, by outcome -->
 
-```{r, fig.height= 10, fig.width = 10, warning=FALSE}
-numerics_long <- Filter(is.numeric, data) %>% 
-  pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value")
-numerics_long$TARGET_5Yrs <- as.character(numerics_long$TARGET_5Yrs)
+<!-- ```{r, fig.height= 10, fig.width = 10, warning=FALSE} -->
+<!-- numerics_long <- Filter(is.numeric, data) %>%  -->
+<!--   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value") -->
+<!-- numerics_long$TARGET_5Yrs <- as.character(numerics_long$TARGET_5Yrs) -->
 
-ggplot(numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free") + labs(x = "")
-# ggplot(numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "")
-```
+<!-- ggplot(numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_boxplot() + facet_wrap(~variable, scales = "free") + labs(x = "") -->
+<!-- # ggplot(numerics_long, aes(value, fill = TARGET_5Yrs)) + geom_histogram() + facet_wrap(~variable, scales = "free") + labs(x = "") -->
+<!-- ``` -->
 
-We see that for most variables, the distribution of values for players who went on to succeed is higher. This makes sense, as most of these variables are increasing in player quality (the better player is expected to make more blocks, steals etc.) 
+<!-- We see that for most variables, the distribution of values for players who went on to succeed is higher. This makes sense, as most of these variables are increasing in player quality (the better player is expected to make more blocks, steals etc.)  -->
 
-## Distributions of categoric variables, by outcome
+## Distributions of character variables, by outcome
 
-```{r}
-# raw_categorics_long <- raw_data %>% 
+For the non-numeric variables, we can't use correlation coefficients to gauge predictive power. However, we can inspect the relationship between the variable and the outcome through bar charts.
+
+```{r char_vars_bar_charts, warning=FALSE}
+# raw_categorics_long <- raw_data %>%
 #   select(TARGET_5Yrs, Round_Drafted, Team, Position) %>%
-#   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value") %>% 
-#   group_by(variable, value, TARGET_5Yrs) %>% 
+#   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value") %>%
+#   group_by(variable, value, TARGET_5Yrs) %>%
 #   summarise(sum = n())
-# 
+#
 # raw_categorics_long$TARGET_5Yrs <- as.character(raw_categorics_long$TARGET_5Yrs)
-# 
-# bar_chart <- ggplot(raw_categorics_long, aes(sum, fill = value)) + geom_bar() + facet_wrap(~variable, scales = "free")  
-# 
+#
+# bar_chart <- ggplot(raw_categorics_long, aes(sum, fill = value)) + geom_bar() + facet_wrap(~variable, scales = "free")
+#
 # bar_chart
 
-bar_plot = function(variable){
-  data <- raw_data[,c("TARGET_5Yrs",variable)] 
-  colnames(data)[2] = "variable"
-  data <- data %>%
-    group_by(TARGET_5Yrs, variable) %>%
-    tally() %>% 
-    mutate(proportion = n/sum(n))
-  
-  data$TARGET_5Yrs <- as.character(data$TARGET_5Yrs)
-#  data$var <- as.character(data$var)
-  
-  print(data %>% ggplot(aes(x = variable , y = proportion, fill = TARGET_5Yrs))+
-    geom_bar(stat = "identity", width = 0.4, position = position_dodge(width = 0.5)))
-}
+# bar_plot = function(variable){
+#   data <- raw_data[,c("TARGET_5Yrs",variable)]
+#   colnames(data)[2] = "variable"
+#   data <- data %>%
+#     group_by(TARGET_5Yrs, variable) %>%
+#     tally() %>%
+#     mutate(proportion = n/sum(n))
+# 
+#   data$TARGET_5Yrs <- as.character(data$TARGET_5Yrs)
+# #  data$var <- as.character(data$var)
+# 
+#   print(data %>% ggplot(aes(x = variable , y = proportion, fill = TARGET_5Yrs))+
+#     geom_bar(stat = "identity", width = 0.4, position = position_dodge(width = 0.5)))
+# }
+# 
+# variables = c("Round_Drafted","Position")
+# 
+# for (i in variables){
+#   bar_plot(i)
+# }
 
-variables = c("Round_Drafted","Position")
+# plot for round drafted
+data %>%
+  select(Round_Drafted, TARGET_5Yrs) %>%
+  group_by(Round_Drafted, TARGET_5Yrs) %>%
+  tally() %>%
+  group_by(TARGET_5Yrs) %>%
+  mutate(proportion = n/sum(n)) %>%
+  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c(seq(1, 10), "U")) + ylab("proportion of players drafted in that round")
 
-for (i in variables){
-  bar_plot(i)
-}  
-
-
-  
+# plot for position
+data %>%
+  select(Position, TARGET_5Yrs) %>%
+  group_by(Position, TARGET_5Yrs) %>%
+  tally() %>%
+  group_by(TARGET_5Yrs) %>%
+  mutate(proportion = n/sum(n)) %>%
+  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward")) + ylab("proportion of players drafted in that round")
 ```
 
+**Round drafted**
+In basketball, better players are generally drafted in an earlier round (with a lower round number), with the undrafted (U) players likely to be the worst. 
+
+There is a clear difference in the distribution of round numbers for those who reached 5 years and those who did not. Among those with TARGET_5Yrs = 1, more than 65% were drafted in the first round, and fewer than 10% were undrafted. Among those who didn't reach 5 years, the corresponding values are 30% and 20%.
+
+**Position**
+To give the order of the bars some meaning, we order by position on the field (i.e. point guards are furthest back, and small forwards furthest forward).
+
+We are then able to see that not only is there a slight difference in distribution of positions between those who made 5 years and those who didn't, but also the difference is successful players are slightly skewed towards attacking positions.
+
+We conclude that both these variables are likely to be of value. 
 
 # III: Pre-process dataset
 
@@ -207,7 +267,7 @@ for (i in variables){
 
 Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position)
 
-```{r, warning=FALSE}
+```{r create_indicators, warning=FALSE}
 # data_to_split <- data %>%
 #   mutate(n = 1) %>%
 #   pivot_wider(names_from = Round_Drafted, values_from = n,
@@ -232,7 +292,7 @@ kable(head(data_to_split))
 
 Using the "initial_split" function from rsample (part of tidymodels), split data into training and testing, using (the default) 75% of observations for training and 25% for testing. The same data and samples will be used by all models. To preserve the overall class distribution, we stratify on the outcome variable (TARGET_5Yrs).
 
-```{r}
+```{r train_test_split}
 set.seed(1423)
 data_split <- initial_split(data_to_split, strata = TARGET_5Yrs)
 
@@ -241,8 +301,8 @@ data_testing <- data_split %>% testing()
 
 sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)", nrow(data), nrow(data_training), nrow(data_testing))
 
-kable(data_testing %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
-kable(data_training %>% group_by(TARGET_5Yrs) %>% tally() %>% mutate(proportion = round(n/sum(n),2)))
+kable(data_testing %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n),2)))
+kable(data_training %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n),2)))
 
 set.seed(1450)
 ## undummied
@@ -260,21 +320,21 @@ data_testing_undummied <- data_split_undummied %>% testing()
 
 The first step is to take all of the appropriate variables from our dataset and separate the regressors and our outcome variable. 
 
-```{r}
+```{r lasso_variable_selection}
 # Train_data_KNN <- data_training %>%
 #   select(X3P.,Win_Perc,GP,MIN,PTS,FG.,FT.,OREB,DREB,AST,STL,BLK,TOV,Year_Drafted, starts_with("Round_Drafted"),starts_with("Position"))
 
 # Test_data_KNN <- data_testing %>%
 #   select(X3P.,Win_Perc,GP,MIN,PTS,FG.,FT.,OREB,DREB,AST,STL,BLK,TOV,Year_Drafted, starts_with("Round_Drafted"),starts_with("Position"))
 
-Train_data_KNN <- data_training %>%
+data_training_lasso <- data_training %>%
   select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
 
-Test_data_KNN <- data_testing %>%
+data_testing_lasso <- data_testing %>%
   select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
 
-Train_Outcome <- data_training %>% select(TARGET_5Yrs)
-Test_Outcome <- data_testing %>% select(TARGET_5Yrs)
+outcome_training <- data_training %>% select(TARGET_5Yrs)
+outcome_testing <- data_testing %>% select(TARGET_5Yrs)
 ```
 
 
@@ -283,54 +343,58 @@ With 34 different regressors, this may not be the optimal set of regressors for 
 Additionally, in 1989 the structure of the draft changed from 10 rounds to just 2. In order to avoid having to remove data values, but still accurately represent the significance of being drafted, we will need to create a time dummy variable and add interaction terms to the Round_Drafted_# dummy variables. 
 
 
-```{r}
-# Create Dummy variables for Year_debut_1989
-Train_data_KNN$Year_debut_before_1989 <- ifelse(data_training$Year_Debut >= 1989, 0, 1)
-Test_data_KNN$Year_debut_before_1989 <- ifelse(data_testing$Year_Debut >= 1989, 0, 1)
+```{r round_drafted_year_debut_interactions}
+# Create Dummy variables for debut before 1989
+data_training_lasso$debut_before_1989 <- ifelse(data_training_lasso$Year_Debut >= 1989, 0, 1)
+data_testing_lasso$debut_before_1989 <- ifelse(data_testing_lasso$Year_Debut >= 1989, 0, 1)
 
-# Create Interaction terms for Round_Drafted_# and Year_debut_before_1989
-Train_data_KNN$Round_Drafted_1_before1989 <- Train_data_KNN$Round_Drafted_X1*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_2_before1989 <- Train_data_KNN$Round_Drafted_X2*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_3_before1989 <- Train_data_KNN$Round_Drafted_X3*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_4_before1989 <- Train_data_KNN$Round_Drafted_X4*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_5_before1989 <- Train_data_KNN$Round_Drafted_X5*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_6_before1989 <- Train_data_KNN$Round_Drafted_X6*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_7_before1989 <- Train_data_KNN$Round_Drafted_X7*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_8_before1989 <- Train_data_KNN$Round_Drafted_X8*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_10_before1989 <- Train_data_KNN$Round_Drafted_X10*Train_data_KNN$Year_debut_before_1989
-Train_data_KNN$Round_Drafted_Undrafted_before1989 <- Train_data_KNN$Round_Drafted_U*Train_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_1_before1989 <- Test_data_KNN$Round_Drafted_X1*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_2_before1989 <- Test_data_KNN$Round_Drafted_X2*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_3_before1989 <- Test_data_KNN$Round_Drafted_X3*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_4_before1989 <- Test_data_KNN$Round_Drafted_X4*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_5_before1989 <- Test_data_KNN$Round_Drafted_X5*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_6_before1989 <- Test_data_KNN$Round_Drafted_X6*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_7_before1989 <- Test_data_KNN$Round_Drafted_X7*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_8_before1989 <- Test_data_KNN$Round_Drafted_X8*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_10_before1989 <- Test_data_KNN$Round_Drafted_X10*Test_data_KNN$Year_debut_before_1989
-Test_data_KNN$Round_Drafted_Undrafted_before1989 <- Test_data_KNN$Round_Drafted_U*Test_data_KNN$Year_debut_before_1989
+# Create Interaction terms for Round_Drafted_# with Year_debut_before_1989
+names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8","U"), "_before_1989")
+
+data_training_lasso[names] <- lapply(select(data_training_lasso,starts_with("Round_Drafted")), function(x) x*data_training_lasso$debut_before_1989)
+
+data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round_Drafted")), function(x) x*data_testing_lasso$debut_before_1989)
+
+
+# # Create Interaction terms for Round_Drafted_# and Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_1_before1989 <- Train_data_KNN$Round_Drafted_X1*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_2_before1989 <- Train_data_KNN$Round_Drafted_X2*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_3_before1989 <- Train_data_KNN$Round_Drafted_X3*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_4_before1989 <- Train_data_KNN$Round_Drafted_X4*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_5_before1989 <- Train_data_KNN$Round_Drafted_X5*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_6_before1989 <- Train_data_KNN$Round_Drafted_X6*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_7_before1989 <- Train_data_KNN$Round_Drafted_X7*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_8_before1989 <- Train_data_KNN$Round_Drafted_X8*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_10_before1989 <- Train_data_KNN$Round_Drafted_X10*Train_data_KNN$Year_debut_before_1989
+# Train_data_KNN$Round_Drafted_Undrafted_before1989 <- Train_data_KNN$Round_Drafted_U*Train_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_1_before1989 <- Test_data_KNN$Round_Drafted_X1*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_2_before1989 <- Test_data_KNN$Round_Drafted_X2*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_3_before1989 <- Test_data_KNN$Round_Drafted_X3*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_4_before1989 <- Test_data_KNN$Round_Drafted_X4*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_5_before1989 <- Test_data_KNN$Round_Drafted_X5*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_6_before1989 <- Test_data_KNN$Round_Drafted_X6*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_7_before1989 <- Test_data_KNN$Round_Drafted_X7*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_8_before1989 <- Test_data_KNN$Round_Drafted_X8*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_10_before1989 <- Test_data_KNN$Round_Drafted_X10*Test_data_KNN$Year_debut_before_1989
+# Test_data_KNN$Round_Drafted_Undrafted_before1989 <- Test_data_KNN$Round_Drafted_U*Test_data_KNN$Year_debut_before_1989
 ```
 
 Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
-```{r}
+```{r lasso_model}
 #Esimate the Lasso Regression Model 
-model_lasso <- glmnet(data.matrix(Train_data_KNN), y = data.matrix(Train_Outcome), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
+model_lasso <- glmnet(data.matrix(data_training_lasso), y = data.matrix(outcome_training), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
 #Plot the Lasso Regression Model against Log Lambda Values
 plot(model_lasso, xvar = "lambda")
-```
 
-```{r}
 beta_hat <- coef(model_lasso)
 #Return the coefficients of the Lasso Regression Model for the different values of Lambda 
 beta_hat
-```
 
+## Find the optimal value of Lambda
 
-Find the optimal value of Lambda
-```{r}
 # The code below estimates the value for Lambda that gives the largest area beneath the ROC (Receiver Operating Characteristic) Curve. These areas are esimated using K-fold cross Validation. 
-cv_lasso <- cv.glmnet(x = data.matrix(Train_data_KNN), y = data.matrix(Train_Outcome), type.measure = "auc" , nfolds = 10)
+cv_lasso <- cv.glmnet(x = data.matrix(data_training_lasso), y = data.matrix(outcome_training), type.measure = "auc" , nfolds = 10)
 lambda = cv_lasso$lambda.min
 #Return the coefficients associated with the model that produces the largest area under the ROC curve in the training data. 
 beta_hat2 <- coef(model_lasso, s = lambda)
@@ -364,21 +428,28 @@ Our current specificaiton does not accurately capture circumstances where confou
 
 When considering the effect of Round Drafted:
 
-$$
-\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 \\
+\begin{equation}
 
-(\beta_1 \ +   \beta_2Year\_Debuted\_Before\_1989 )Round\_Drafted\_\# \\ 
+\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 + \\
 
-Where: \\ 
-   
+(\beta_1 \ +   \beta_2Year\_Debuted\_Before\_1989 )Round\_Drafted\_\# 
+
+\end{equation}
+
+Where:  
+
+\begin{equation}   
 Year\_Debuted\_Before\_1989 = 
      \begin{cases}
-       1 &\quad\text{if Year_Debut}<0\\
+       1 &\quad\text{if Year_Debut}<1989\\
        0 &\quad\text{if Year_Debut} \ge1989 \\
      \end{cases}
-$$
+\end{equation}     
 
-In other words, the effect for players drafted after 1989 is captured by \beta_1 and players drafted before 1989 is captured by \beta_1 + \beta_2
+In other words, the effect for players drafted after 1989 is captured by 
+\begin{equation} \beta_1 \end{equation} 
+and players drafted before 1989 is captured by 
+\begin{equation} \beta_1 + \beta_2 \end{equation}
  
  
 The data suggests a clear association between being drafted in the first round and the likelihood of making it to year 5. This is consistent with the notion that players drafted in the first round will have performed better in college or international leagues before they declared for the draft. You could argue that the round a player is drafted functions as a good proxy for the expectations for a player coming into the league. 
@@ -402,14 +473,14 @@ Given that KNN models are susceptible to the curse of dimensionality, it is impo
 Looking at the Lasso results above, this subset of regressors seems to be represent that variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
 
 
-```{r}
+```{r KNN_variable_selection}
 Adj_Train_data_KNN <- data_training %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1")
 Adj_Test_data_KNN <- data_testing %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1")
 ```
 
 ```{r}
-KNN_Predicted <- knn(train = data.matrix(Adj_Train_data_KNN), test = data.matrix(Adj_Test_data_KNN), cl = data.matrix(Train_Outcome), k = 25)
-CrossTable(x= data.matrix(Test_Outcome), y= KNN_Predicted, prop.chisq = FALSE, chisq = TRUE)
+KNN_Predicted <- knn(train = data.matrix(Adj_Train_data_KNN), test = data.matrix(Adj_Test_data_KNN), cl = data.matrix(outcome_training), k = 25)
+CrossTable(x= data.matrix(outcome_testing), y= KNN_Predicted, prop.chisq = FALSE, chisq = TRUE)
 ```
 
 ```{r}
@@ -418,7 +489,7 @@ CrossTable(x= data.matrix(Test_Outcome), y= KNN_Predicted, prop.chisq = FALSE, c
 
 accuracy on test data = 73.45679%
 
-```{r}
+```{r test_undummied_tree}
 
 data_training_undummied$TARGET_5Yrs <- as.factor(data_training_undummied$TARGET_5Yrs)
 
