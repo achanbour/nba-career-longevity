@@ -430,7 +430,7 @@ When considering the effect of Round Drafted:
 
 \begin{equation}
 
-\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 + \\
+\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 \\
 
 (\beta_1 \ +   \beta_2Year\_Debuted\_Before\_1989 )Round\_Drafted\_\# 
 
