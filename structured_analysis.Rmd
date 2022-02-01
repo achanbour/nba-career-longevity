@@ -16,7 +16,7 @@ library(caret)
 #library(dplyr) # tidymodels
 #library(ggplot2) # tidymodels
 #library(fastDummies) # pivot_wider 
-library(corrplot) # possibly not doing a corr plot
+#library(corrplot) # possibly not doing a corr plot
 library(prettydoc)
 library(tidymodels)
 
@@ -36,6 +36,8 @@ raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs)
 ```
 
 # I: Project Introduction
+
+*You can navigate this document by clicking on headings and subheadings in the table of contents on the left*
 
 This dataset contains the key performance metrics of NBA players in their rookie (first) season in the NBA League and additional information about how they entered the league (The NBA Draft and the teams they were drafted to).
 
@@ -105,8 +107,8 @@ summary(raw_data)
 
   1) Values for year drafted and year debut are all in the expected range (between 1971 and 2016)
   2) Values for win percentage are all between 0 and 100, as expected
-  3) The character variables (name, round drafted, team and position) all have the expected number of observations (1301).
-  4) Using the TARGET_5Yrs variable, we see that 818 (63%) of players in the sample reached 5 years, and 483 37% did not
+  3) The character variables (name, round drafted, team and position) all have the expected number of observations (1299).
+  4) Using the TARGET_5Yrs variable, we see that 817 (63%) of players in the sample reached 5 years, and 482 (37%) did not
   
 5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 observations respectively). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
 We drop the player names at this point, as they will serve no purpose in our analysis. We also drop the team names, as most of the predictive power of the team should be captured by the team win percentage variable (which is far easier to work with than 30 dummy variables for the teams):
@@ -121,14 +123,15 @@ sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(d
 Summarise does a good job of making sure the numeric values all fall within the expected ranges. However, non-numeric variables can also contain errors. We check for this by getting the distinct values for the two remaining columns with character type (Round Drafted and Position)
 
 ```{r check_character_variable_values}
-data %>% distinct(Round_Drafted) %>% arrange(Round_Drafted)
-data %>% distinct(Position) %>% arrange(Position)
+data %>% count(Round_Drafted) #%>% arrange(Round_Drafted)
+data %>% count(Position)# %>% arrange(Position)
 ```
-We find a number of issues which need addressing
+We find a number of issues:
 
 **Round drafted**
   - There are two different representations of U (undrafted), because one of them has a trailing space
   - Our dataset doesn't contain any players that were drafted in round 9. This is noted but not likely to cause issues, and is because a) the sample is quite small, and b) round 9 didn't exist past 1989. This will be discussed again later on.
+  - Very few players are drafted in other high round numbers, such as round 10 (only 1 player). This may cause problems, because the factor level 10 can only exist in either the training or testing data, but not both.
   
 **Position**
   - Again, there are two different representations of Center, due to a trailing space
@@ -137,15 +140,15 @@ We find a number of issues which need addressing
 We now fix these issues:
 
 ```{r fix_character_variable_values}
-# remove any leading or trailing whitespace in chracter columns
+# remove any leading or trailing whitespace in character columns
 data <- data.frame(lapply(data, function(x) if(class(x)=="character") trimws(x) else(x)), stringsAsFactors=F)
 
 # replace 'Point Guard' with 'Point guard'
 data$Position[data$Position == "Point Guard"] <- "Point guard"
 
 # check it worked
-data %>% distinct(Round_Drafted) %>% arrange(Round_Drafted)
-data %>% distinct(Position) %>% arrange(Position)
+data %>% count(Round_Drafted) #%>% arrange(Round_Drafted)
+data %>% count(Position) #%>% arrange(Position)
 ```
 
 ## Correlations between regressors and outcome variable
@@ -233,20 +236,16 @@ For the non-numeric variables, we can't use correlation coefficients to gauge pr
 # plot for round drafted
 data %>%
   select(Round_Drafted, TARGET_5Yrs) %>%
-  group_by(Round_Drafted, TARGET_5Yrs) %>%
-  tally() %>%
-  group_by(TARGET_5Yrs) %>%
-  mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c(seq(1, 10), "U")) + ylab("proportion of players drafted in that round")
+  group_by(Round_Drafted, TARGET_5Yrs) %>% tally() %>%
+  group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
+  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c(seq(1, 10), "U")) + ylab("for the outcome variable group, proportion of players drafted in the round")
 
 # plot for position
 data %>%
   select(Position, TARGET_5Yrs) %>%
-  group_by(Position, TARGET_5Yrs) %>%
-  tally() %>%
-  group_by(TARGET_5Yrs) %>%
-  mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward")) + ylab("proportion of players drafted in that round")
+  group_by(Position, TARGET_5Yrs) %>% tally() %>%
+  group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
+  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward")) + ylab("proportion of players drafted in that round") + ylab("for the outcome variable group, proportion of players in the position")
 ```
 
 **Round drafted**
@@ -263,6 +262,8 @@ We conclude that both these variables are likely to be of value.
 
 # III: Pre-process dataset
 
+We now move on to first preparing the data for, and then fitting, models. Where possible, we will do this using tidymodels methods, to ensure all models use the same data for training and testing, and to make it easier to fit and compare several models.
+
 ## Create indicator variables
 
 Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position)
@@ -276,9 +277,10 @@ Using the "step_dummy" function from recipes (part of tidymodels), create dummy 
 #   pivot_wider(names_from = Position, values_from = n,
 #               names_prefix = 'position_', values_fill = list(n = 0))
 
+data$Round_Drafted[data$Round_Drafted == "U"] <- 0
+
 dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
-  step_dummy(Round_Drafted) %>%
-  step_dummy(Position) %>%
+  step_dummy(Round_Drafted) %>% step_dummy(Position) %>%
   prep()
 
 data_to_split <- bake(dummy_multi_choice_rec, new_data = data) #%>% select(-Name)
@@ -301,22 +303,23 @@ data_testing <- data_split %>% testing()
 
 sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)", nrow(data), nrow(data_training), nrow(data_testing))
 
+# check proportions of outcome variable values are the same across training and testing
 kable(data_testing %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n),2)))
 kable(data_training %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n),2)))
 
-set.seed(1450)
-## undummied
-data_split_undummied <- initial_split(data, strata = TARGET_5Yrs)
-
-data_training_undummied <- data_split_undummied %>% training()
-data_testing_undummied <- data_split_undummied %>% testing()
+# set.seed(1450)
+# ## undummied
+# data_split_undummied <- initial_split(data, strata = TARGET_5Yrs)
+# 
+# data_training_undummied <- data_split_undummied %>% training()
+# data_testing_undummied <- data_split_undummied %>% testing()
 ```
 
 # IV: Model development
 
-## Logistic regression with only few predictors
+## Logistic regression
 
-#### Implementation of Gradient Descent
+### Implementation of Gradient Descent
 
 As a first step towards fitting a logistic regression model, we implement a gradient descent algorithm to find the model parameters that minimise the log loss function given by:
 
@@ -335,13 +338,12 @@ For simplicity we omit the division by 1/n as it doesn't affect our minimisation
 
 **Note**: Here we assume an unregularised logistic regression with 0 penalty term
 
-```{r}
+```{r sigmoid_loss_function}
 # defining the sigmoid function
 sigmoid <- function(x) {
   1 / (1 + exp(-x))
 }
-```
-```{r}
+
 # implementing the loss function in code
 logistic_loss <- function(X, y, beta) {
   X <- unname(as.matrix(X)) # remove column names
@@ -362,7 +364,7 @@ $$
 \nabla L(\beta) = X^T(\sigma(X\beta)-Y)
 $$
 
-```{r}
+```{r gradient_function}
 # implementing the gradient in code
 gradient <- function(X, y, beta) {
   X <- unname(as.matrix(X))
@@ -370,9 +372,7 @@ gradient <- function(X, y, beta) {
   beta <- as.matrix(beta, length(beta), 1) # converting a beta to a column vector of length length(beta)
   as.matrix(t(X) %*% (sigmoid(X %*% beta) - y), ncol(X), 1) # returning the gradient vector as a column vector of length ncol(X)
 }
-```
 
-```{r}
 # the gradient descent algorithm
 # source: https://en.wikipedia.org/wiki/Gradient_descent#Description
 gradient_descent <- function(X, y, loss_function) {
@@ -402,24 +402,28 @@ gradient_descent <- function(X, y, loss_function) {
 
 We now apply the gradient-descent algorithm to estimate the coefficients of a logistic regression of our target on a subset of predictors.
 The chosen predictors are likely to be weakly correlated, hence they avoid a potential multicollinearity problem in our model.
-The chosen predictors (which are continuous variables) capture the general performance of a player in both offence and defense without going into more sophisticated detailes. The predictors are: GP, FTM, REB, AST, STL, BLK, TOV.
+The chosen predictors (which are continuous variables) capture the general performance of a player in both offence and defense without going into more sophisticated details.
+The predictors are: games played, free throws made, rebounds, assists, steals, blocks and turnovers.
 
-```{r}
+```{r logistic_variable_selection}
 # selecting the outcome and predictors from the train set
-data_logistic <- data_training %>% select("GP", "PTS", "REB", "AST", "STL", "BLK", "TOV", "TARGET_5Yrs")
-# scaling the variables
-for (var in c("GP", "PTS", "REB", "AST", "STL", "BLK", "TOV")){
+regressors <- c("GP", "PTS", "REB", "AST", "STL", "BLK", "TOV")
+
+data_logistic <- data_training %>% select(c(regressors, TARGET_5Yrs))
+
+# scaling the regressors
+for (var in regressors){
   data_logistic[ , var] <- scale(data_logistic[ , var])
 }
-X_gd <- data_logistic %>% select(-"TARGET_5Yrs")
-y_gd <- data_training[, "TARGET_5Yrs"]
+X_gd <- data_logistic %>% select(-TARGET_5Yrs)
+y_gd <- data_training %>% select(TARGET_5Yrs)
 gradient_descent(X_gd, y_gd, logistic_loss)
 ```
 
 To evaluate the efficiency of our algorithm, we compare the estimated coefficients from the gradient descent algorithm to those from the direct implementation of the logistic regression (using the glm library)
 
-```{r}
-logistic_fit <- glm(unlist(data_logistic[, "TARGET_5Yrs"]) ~ GP + PTS + REB + AST + STL + BLK + TOV - 1, data=data_logistic, family="binomial") #we omit the intercept
+```{r direct_logistic_regression}
+logistic_fit <- glm(unlist(y_gd) ~ GP + PTS + REB + AST + STL + BLK + TOV - 1, data=data_logistic, family="binomial") #we omit the intercept
 summary(logistic_fit)
 ```
 
@@ -427,10 +431,9 @@ As we can see, the estimated coefficients are quite similar between the two impl
 
 ### Feature selection with logistic regression
 
-The model development section starts with a logistic regression model fit on all predictors. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the z-tests in the summary below.
+The model development section starts with a logistic regression model fit on all predictors, using tidymodels. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the z-tests in the summary below.
 
-```{r}
-#fit using tidy models
+```{r logistic_regression_model}
 logistic_model <- logistic_reg() %>%
   set_engine("glm") %>%
   set_mode("classification") %>%
@@ -458,7 +461,7 @@ Logistic regression uses *reference level coding*. The z-test comapres each of t
 **Predictions and model accuracy**
 
 Test data prediction
-```{r}
+```{r logistic_prediction}
 logistic_pred_results <- logistic_model %>%
   predict(data_testing) %>%
   bind_cols(data_testing) %>%
@@ -470,7 +473,7 @@ logistic_pred_probs <- logistic_model %>%
 
 Model Evaluation
 
-```{r}
+```{r logistic_evaluation}
 #accuracy
 logistic_pred_results$TARGET_5Yrs <- as.factor(logistic_pred_results$TARGET_5Yrs)
 ##truth refers to the actual results and estimate refers to what the model predicted
@@ -488,7 +491,7 @@ As a next step, we check for non-linearity using another classification approach
 When using a Radial Basis (RBF) Kernel, the SVM algorithm measures the Eucledian distance (as a measure of similarity) between points in the space. Consequently, it has a very local behaviour in the sense that only nearby training observations affect the classification of a test observation.
 Similar to the KNN algorithm, RBF Kernel has the advantage of overcoming space complexity as, instead of reusing all of the dataset, it only needs to store the support vectors during training. The support vectors are the data points that are the closest to the decision boundary and define the margin of the classifier
 
-```{r}
+```{r svm}
 svm_rbf <- svm_rbf() %>%
   set_engine("kernlab") %>%
   set_mode("classification") %>%
@@ -498,7 +501,7 @@ svm_rbf
 
 **Predictions and model accuracy**
 
-```{r}
+```{r svm_predictions}
 predictions_svm <- svm_rbf %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
@@ -510,7 +513,7 @@ The RBF Kernel yields a predictive accuracy of about 75% which is slightly lower
 
 #### SVM with a polynomial kernel
 
-```{r}
+```{r svm_polynomial_kernel}
 svm_poly <- svm_poly() %>%
   set_engine("kernlab") %>%
   set_mode("classification") %>%
@@ -521,7 +524,7 @@ svm_poly
 
 **Predictions and model accuracy**
 
-```{r}
+```{r svm_polynomial_predictions}
 predictions_svm_poly <- svm_poly %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
@@ -539,7 +542,7 @@ We now move onto a very different classification approach: decision-tree classif
 
 To get more sensible results, we use the undummied version of our data.
 
-```{r}
+```{r decision_tree}
 #data_training$TARGET_5Yrs <- as.factor(Train$TARGET_5Yrs)
 tree <- decision_tree() %>%
   set_engine("rpart") %>%
@@ -582,7 +585,7 @@ Decision trees have low bias (they make no assumption about the functional form 
 Random forest is built by fitting multiple decision trees, then taking the average of the resulting predictions. Each time a split is considered, a random sample of m predictors is chosen as split candidates from the full set of preditors. This ensures that the resulting predictions of the decision trees are not highly correlated (averaging over highly correlated values does not lead to substantial reduction in variance).
 
 As for tree, we also refer to the undumied version of our data
-```{r}
+```{r random_forest}
 #random forests fit with tidymodels
 rf <- rand_forest(trees=100, mode="classification") %>%
     set_engine("randomForest") %>%
@@ -591,7 +594,7 @@ rf
 ```
 
 **Predictions and model accuracy**
-```{r}
+```{r rf_predictions}
 #predictions
 predictions_rf <- rf %>%
   predict(data_testing) %>%
@@ -599,7 +602,7 @@ predictions_rf <- rf %>%
   glimpse()
 ```
 
-```{r}
+```{r rf_metrics}
 #using metrics to measure the performance of the model
 predictions_rf$TARGET_5Yrs <- as.factor(predictions_rf$TARGET_5Yrs)
 ##truth refers to the actual results and estimate refers to what the model predicted
@@ -607,7 +610,7 @@ metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class)
 ```
 
 Random forests achieve a predictive accuracy of roughly 78% which is higher than our previous single decision tree classifier, as expected.
-```{r}
+```{r rf_probabilities}
 #obtaining the probabilities for each possible predicted value
 predictions_probs <- rf %>%
   predict(data_testing, type="prob") %>%
@@ -615,7 +618,7 @@ predictions_probs <- rf %>%
 glimpse(predictions_probs)
 ```
 
-```{r}
+```{r rf_roc_curve}
 #plotting the results
 predictions_probs %>%
   roc_curve(as.factor(TARGET_5Yrs), .pred_0) %>%
@@ -666,7 +669,7 @@ data_training_lasso$debut_before_1989 <- ifelse(data_training_lasso$Year_Debut >
 data_testing_lasso$debut_before_1989 <- ifelse(data_testing_lasso$Year_Debut >= 1989, 0, 1)
 
 # Create Interaction terms for Round_Drafted_# with Year_debut_before_1989
-names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8","U"), "_before_1989")
+names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8"), "_before_1989")
 
 data_training_lasso[names] <- lapply(select(data_training_lasso,starts_with("Round_Drafted")), function(x) x*data_training_lasso$debut_before_1989)
 
@@ -763,11 +766,7 @@ Year\_Debuted\_Before\_1989 =
      \end{cases}
 \end{equation}     
 
-In other words, the effect for players drafted after 1989 is captured by 
-\begin{equation} \beta_1 \end{equation} 
-and players drafted before 1989 is captured by 
-\begin{equation} \beta_1 + \beta_2 \end{equation}
- 
+In other words, the effect for players drafted after 1989 is captured by $\beta_1$ and players drafted before 1989 is captured by $\beta_1 + \beta_2$
  
 The data suggests a clear association between being drafted in the first round and the likelihood of making it to year 5. This is consistent with the notion that players drafted in the first round will have performed better in college or international leagues before they declared for the draft. You could argue that the round a player is drafted functions as a good proxy for the expectations for a player coming into the league. 
 
@@ -781,14 +780,23 @@ The data suggests a clear association between being drafted in the first round a
 
 ## KNN
 
+  - Predictive Accuracy without interpretability 
+
+
+Using the results from the Lasso Regression, we want choose the following subset of regressors to train our KNN model: Win_Perc,GP, MIN, PTS, FG., OREB, AST, Year_Drafted, Round_Drafted_1
+
+Given that KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables as possible whilst trying to gain the most information from each variable to improve the predictive accuracy of the model. 
+
+Looking at the Lasso results above, this subset of regressors seems to be represent that variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
+
 ```{r tidymodels_knn}
+vars <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "Win_Perc", "Year_Debut", "Round_Drafted_X1", "Round_Drafted_1_before_1989")
+
 data_training_KNN <- data_training_lasso %>%
-  select(GP, MIN, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1, Round_Drafted_1_before_1989) %>% 
-  bind_cols(outcome_training)
+  select(vars) %>% bind_cols(outcome_training)
 
 data_testing_KNN <- data_testing_lasso %>%
-  select(GP, MIN, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1, Round_Drafted_1_before_1989) %>% 
-  bind_cols(outcome_testing)
+  select(vars) %>% bind_cols(outcome_testing)
 
 knn <- nearest_neighbor(mode = "classification", engine = "kknn") %>% 
   fit(TARGET_5Yrs ~., data = data_training_KNN)
@@ -800,30 +808,21 @@ predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs)
 metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class)
 ```
 
-  - Predictive Accuracy without interpretability 
 
-
-Using the results from the Lasso Regression, we want choose the following subset of regressors to train our KNN model: Win_Perc,GP, MIN, PTS, FG., OREB, AST, Year_Drafted, Round_Drafted_1
-
-Given that KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables as possible whilst trying to gain the most information from each variable to improve the predictive accuracy of the model. 
-
-Looking at the Lasso results above, this subset of regressors seems to be represent that variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
-
-
-```{r KNN_variable_selection}
-Adj_Train_data_KNN <- data_training %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1")
-Adj_Test_data_KNN <- data_testing %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1")
-```
-
-```{r}
-KNN_Predicted <- knn(train = data.matrix(Adj_Train_data_KNN), test = data.matrix(Adj_Test_data_KNN), cl = data.matrix(outcome_training), k = 25)
-CrossTable(x= data.matrix(outcome_testing), y= KNN_Predicted, prop.chisq = FALSE, chisq = TRUE)
-```
-
-```{r}
-(62+176)/324*100
-```
-
-accuracy on test data = 73.45679%
+<!-- # ```{r KNN_variable_selection} -->
+<!-- # Adj_Train_data_KNN <- data_training %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1") -->
+<!-- # Adj_Test_data_KNN <- data_testing %>% select("Win_Perc","GP", "MIN", "PTS", "FG.", "OREB", "AST", "Year_Drafted", "Round_Drafted_X1") -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # KNN_Predicted <- knn(train = data.matrix(Adj_Train_data_KNN), test = data.matrix(Adj_Test_data_KNN), cl = data.matrix(outcome_training), k = 25) -->
+<!-- # CrossTable(x= data.matrix(outcome_testing), y= KNN_Predicted, prop.chisq = FALSE, chisq = TRUE) -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # ```{r} -->
+<!-- # (62+176)/324*100 -->
+<!-- # ``` -->
+<!-- #  -->
+<!-- # accuracy on test data = 73.45679% -->
 
 # V: Conclusion
