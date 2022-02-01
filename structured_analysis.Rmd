@@ -47,7 +47,7 @@ This dataset was collected from https://data.world/exercises/logistic-regression
 
 Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that team's record at the end of the season was web scraped from Wikipedia using a Python script not included in this document.
 
-Before being web scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/ ???
+Before being web scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/?
 
 ## Variable descriptions
 
@@ -156,8 +156,9 @@ data %>% count(Position) #%>% arrange(Position)
 As a simple way to get a sense of which of the numeric regressors are most likely to be have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
 
 ```{r corr_regressors_with_outcome}
+# generate correlation matrix 
 correlations <- round(cor(as.numeric(data$TARGET_5Yrs), Filter(is.numeric, data)),2)
-correlations[,order(abs(correlations),decreasing = TRUE)]
+correlations[,order(abs(correlations),decreasing = TRUE)] # display, ordered by absolute values
 # kable(round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)) # round to 2 d.p. and pretty-print
 # 
 # test[,order(abs(test),decreasing = TRUE)]
@@ -266,7 +267,7 @@ We now move on to first preparing the data for, and then fitting, models. Where 
 
 ## Create indicator variables
 
-Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position)
+Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position). The function replaces the categoric variable by n-1 dummy columns, where n is the number of categories the variable can take, to avoid the dummy variable trap.
 
 ```{r create_indicators, warning=FALSE}
 # data_to_split <- data %>%
@@ -277,12 +278,15 @@ Using the "step_dummy" function from recipes (part of tidymodels), create dummy 
 #   pivot_wider(names_from = Position, values_from = n,
 #               names_prefix = 'position_', values_fill = list(n = 0))
 
+# manipulate undrafted variable to make sure all other rounds get a dummy
 data$Round_Drafted[data$Round_Drafted == "U"] <- 0
 
+# define recipe - create dummies for round drafted and position
 dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
   step_dummy(Round_Drafted) %>% step_dummy(Position) %>%
   prep()
 
+# execute the steps in the recipe
 data_to_split <- bake(dummy_multi_choice_rec, new_data = data) #%>% select(-Name)
 #ids <- tidy(dummy_multi_choice_rec, number = 1)
 
@@ -403,7 +407,7 @@ gradient_descent <- function(X, y, loss_function) {
 We now apply the gradient-descent algorithm to estimate the coefficients of a logistic regression of our target on a subset of predictors.
 The chosen predictors are likely to be weakly correlated, hence they avoid a potential multicollinearity problem in our model.
 The chosen predictors (which are continuous variables) capture the general performance of a player in both offence and defense without going into more sophisticated details.
-The predictors are: games played, free throws made, rebounds, assists, steals, blocks and turnovers.
+The predictors are: games played, points, rebounds, assists, steals, blocks and turnovers.
 
 ```{r logistic_variable_selection}
 # selecting the outcome and predictors from the train set
@@ -460,8 +464,8 @@ Logistic regression uses *reference level coding*. The z-test comapres each of t
 
 **Predictions and model accuracy**
 
-Test data prediction
-```{r logistic_prediction}
+```{r logistic_evaluation}
+# predictions
 logistic_pred_results <- logistic_model %>%
   predict(data_testing) %>%
   bind_cols(data_testing) %>%
@@ -469,11 +473,7 @@ logistic_pred_results <- logistic_model %>%
 logistic_pred_probs <- logistic_model %>%
   predict(data_testing, type="prob") %>%
   bind_cols(data_testing)
-```
 
-Model Evaluation
-
-```{r logistic_evaluation}
 #accuracy
 logistic_pred_results$TARGET_5Yrs <- as.factor(logistic_pred_results$TARGET_5Yrs)
 ##truth refers to the actual results and estimate refers to what the model predicted
@@ -484,7 +484,7 @@ The logistic regression model yields an accuracy of nearly 78%. For our classifi
 
 As a next step, we check for non-linearity using another classification approach - that of Support Vector Machines (SVM). As opposed to logistic regressional, SVM allow us to classify data points according to non-linear decision boundaries.
 
-### SVM: a non-linear classifier.
+## SVM
 
 #### SVM with a radial kernel
 
@@ -497,11 +497,8 @@ svm_rbf <- svm_rbf() %>%
   set_mode("classification") %>%
   fit(TARGET_5Yrs ~ ., data = data_training)
 svm_rbf
-```
 
-**Predictions and model accuracy**
-
-```{r svm_predictions}
+## Predictions and model accuracy
 predictions_svm <- svm_rbf %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
@@ -519,12 +516,8 @@ svm_poly <- svm_poly() %>%
   set_mode("classification") %>%
   fit(TARGET_5Yrs ~., data=data_training)
 svm_poly
-```
 
-
-**Predictions and model accuracy**
-
-```{r svm_polynomial_predictions}
+## Predictions and model accuracy
 predictions_svm_poly <- svm_poly %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
@@ -536,7 +529,7 @@ The polynomial kernel yields an accuracy of 76% which is lower but closer to the
 
 From these two results, we can surprisingly conclude that a linear classification model has the highest accuracy on our data set.
 
-## Decision Tree and Random Forest
+## Decision Tree
 
 We now move onto a very different classification approach: decision-tree classification. Decision trees have the advantage of being very interpretable, allowing us to directly visualise the relationship between the outcome and the explanatory variables.
 
@@ -554,7 +547,6 @@ tree %>%
   rpart.plot(roundint=FALSE, type = 5)
 
 ##Predictions and model accuracy
-
 predictions_tree <- tree %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
@@ -576,7 +568,7 @@ metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class)
 * The tree classifier yields an overall predictive accuracy of 74%.
 * The relatively low predictive accuracy is compensated by the simplicity and the interpretability of the decision tree model. Since there are several other factors affecting a player's success in the NBA, some of which we can't control for in our models (such as talent, socio-economic background etc.), it is not surprising that our decision tree does not achieve an exceptionally high predictive accuracy. For what it is, the model seems to be performing relatively well.
 
-### Random Forests
+## Random Forests
 
 To improve upon the performance of the decision tree classifier, we consider a random forest model. Random forests use decision trees as building blocks to construct more powerful predictive models.
 
@@ -591,34 +583,28 @@ rf <- rand_forest(trees=100, mode="classification") %>%
     set_engine("randomForest") %>%
     fit(TARGET_5Yrs~., data = data_training)
 rf
-```
 
-**Predictions and model accuracy**
-```{r rf_predictions}
-#predictions
+## Predictions and model accuracy
 predictions_rf <- rf %>%
   predict(data_testing) %>%
   bind_cols(data_testing) %>%
   glimpse()
-```
 
-```{r rf_metrics}
 #using metrics to measure the performance of the model
 predictions_rf$TARGET_5Yrs <- as.factor(predictions_rf$TARGET_5Yrs)
-##truth refers to the actual results and estimate refers to what the model predicted
+#truth refers to the actual results and estimate refers to what the model predicted
 metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class)
 ```
 
 Random forests achieve a predictive accuracy of roughly 78% which is higher than our previous single decision tree classifier, as expected.
-```{r rf_probabilities}
+```{r rf_probabilities_roc}
 #obtaining the probabilities for each possible predicted value
 predictions_probs <- rf %>%
   predict(data_testing, type="prob") %>%
   bind_cols(data_testing)
 glimpse(predictions_probs)
-```
 
-```{r rf_roc_curve}
+
 #plotting the results
 predictions_probs %>%
   roc_curve(as.factor(TARGET_5Yrs), .pred_0) %>%
@@ -702,7 +688,8 @@ data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round
 Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
 ```{r lasso_model}
-#Esimate the Lasso Regression Model 
+## Esimate the Lasso Regression Model 
+
 model_lasso <- glmnet(data.matrix(data_training_lasso), y = data.matrix(outcome_training), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
 #Plot the Lasso Regression Model against Log Lambda Values
 plot(model_lasso, xvar = "lambda")
@@ -723,7 +710,6 @@ print(beta_hat2)
 ```
 
 ### Analysis of the Lasso model above 
-
 
 Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penality increases. 
 
@@ -774,20 +760,17 @@ The data suggests a clear association between being drafted in the first round a
  - Compare this model with baseline models:
     * Logistic Regression
     * Trees 
-    
-  
-
 
 ## KNN
 
   - Predictive Accuracy without interpretability 
 
 
-Using the results from the Lasso Regression, we want choose the following subset of regressors to train our KNN model: Win_Perc,GP, MIN, PTS, FG., OREB, AST, Year_Drafted, Round_Drafted_1
+Using the results from the Lasso Regression, we want choose the following subset of regressors to train our KNN model: GP, MIN, PTS, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1
 
 Given that KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables as possible whilst trying to gain the most information from each variable to improve the predictive accuracy of the model. 
 
-Looking at the Lasso results above, this subset of regressors seems to be represent that variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
+Looking at the Lasso results above, this subset of regressors seems to represent the variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
 
 ```{r tidymodels_knn}
 vars <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "Win_Perc", "Year_Debut", "Round_Drafted_X1", "Round_Drafted_1_before_1989")
