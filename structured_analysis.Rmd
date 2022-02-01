@@ -39,6 +39,8 @@ raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs)
 
 *You can navigate this document by clicking on headings and subheadings in the table of contents on the left*
 
+*Throughout this document, the kable function is used to cleanly display data*
+
 This dataset contains the key performance metrics of NBA players in their rookie (first) season in the NBA League and additional information about how they entered the league (The NBA Draft and the teams they were drafted to).
 
 The objective of this project is to build classification models to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
@@ -110,7 +112,7 @@ summary(raw_data)
   3) The character variables (name, round drafted, team and position) all have the expected number of observations (1299).
   4) Using the TARGET_5Yrs variable, we see that 817 (63%) of players in the sample reached 5 years, and 482 (37%) did not
   
-5) A small number of NAs are present in the expected 3 pointers and win percentage columns (10 and 1 observations respectively). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
+5) A small number of NAs are present in the expected 3 pointers column (10 observations). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
 We drop the player names at this point, as they will serve no purpose in our analysis. We also drop the team names, as most of the predictive power of the team should be captured by the team win percentage variable (which is far easier to work with than 30 dummy variables for the teams):
 
 ```{r omit_nas}
@@ -129,11 +131,13 @@ data %>% count(Position)# %>% arrange(Position)
 We find a number of issues:
 
 **Round drafted**
+
   - There are two different representations of U (undrafted), because one of them has a trailing space
   - Our dataset doesn't contain any players that were drafted in round 9. This is noted but not likely to cause issues, and is because a) the sample is quite small, and b) round 9 didn't exist past 1989. This will be discussed again later on.
   - Very few players are drafted in other high round numbers, such as round 10 (only 1 player). This may cause problems, because the factor level 10 can only exist in either the training or testing data, but not both.
   
 **Position**
+
   - Again, there are two different representations of Center, due to a trailing space
   - There are two different representations of Point guard, this time due to a letter case
   
@@ -153,7 +157,7 @@ data %>% count(Position) #%>% arrange(Position)
 
 ## Correlations between regressors and outcome variable
 
-As a simple way to get a sense of which of the numeric regressors are most likely to be have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
+As a simple way to get a sense of which of the numeric regressors are most likely to have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
 
 ```{r corr_regressors_with_outcome}
 # generate correlation matrix 
@@ -239,22 +243,24 @@ data %>%
   select(Round_Drafted, TARGET_5Yrs) %>%
   group_by(Round_Drafted, TARGET_5Yrs) %>% tally() %>%
   group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c(seq(1, 10), "U")) + ylab("for the outcome variable group, proportion of players drafted in the round")
+  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c(seq(1, 10), "U")) + ylab("proportion of players drafted in the round, by outcome")
 
 # plot for position
 data %>%
   select(Position, TARGET_5Yrs) %>%
   group_by(Position, TARGET_5Yrs) %>% tally() %>%
   group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward")) + ylab("proportion of players drafted in that round") + ylab("for the outcome variable group, proportion of players in the position")
+  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward")) + ylab("proportion of players drafted in that round") + ylab("proportion of players in the position, by outcome")
 ```
 
 **Round drafted**
+
 In basketball, better players are generally drafted in an earlier round (with a lower round number), with the undrafted (U) players likely to be the worst. 
 
 There is a clear difference in the distribution of round numbers for those who reached 5 years and those who did not. Among those with TARGET_5Yrs = 1, more than 65% were drafted in the first round, and fewer than 10% were undrafted. Among those who didn't reach 5 years, the corresponding values are 30% and 20%.
 
 **Position**
+
 To give the order of the bars some meaning, we order by position on the field (i.e. point guards are furthest back, and small forwards furthest forward).
 
 We are then able to see that not only is there a slight difference in distribution of positions between those who made 5 years and those who didn't, but also the difference is successful players are slightly skewed towards attacking positions.
@@ -278,7 +284,7 @@ Using the "step_dummy" function from recipes (part of tidymodels), create dummy 
 #   pivot_wider(names_from = Position, values_from = n,
 #               names_prefix = 'position_', values_fill = list(n = 0))
 
-# manipulate undrafted variable to make sure all other rounds get a dummy
+# step_dummy doesn't give the first variable a dummy. We want this to be undrafted players, so we code it as 0 so it becomes the first value
 data$Round_Drafted[data$Round_Drafted == "U"] <- 0
 
 # define recipe - create dummies for round drafted and position
@@ -400,20 +406,21 @@ gradient_descent <- function(X, y, loss_function) {
   final_loss_value <- logistic_loss(X, y, beta_next)
   print(paste0("Initial loss: ", initial_loss_value))
   print(paste0("Final loss after ", i, " iterations: ", final_loss_value))
-  beta_next # estimated coefficient values
+#  print(beta_next) # estimated coefficient values
+  return(beta_next)
 }
 ```
 
 We now apply the gradient-descent algorithm to estimate the coefficients of a logistic regression of our target on a subset of predictors.
 The chosen predictors are likely to be weakly correlated, hence they avoid a potential multicollinearity problem in our model.
-The chosen predictors (which are continuous variables) capture the general performance of a player in both offence and defense without going into more sophisticated details.
+The chosen predictors (which are continuous variables) capture the general performance of a player in both offence and defence without going into more sophisticated details.
 The predictors are: games played, points, rebounds, assists, steals, blocks and turnovers.
 
 ```{r logistic_variable_selection}
 # selecting the outcome and predictors from the train set
 regressors <- c("GP", "PTS", "REB", "AST", "STL", "BLK", "TOV")
 
-data_logistic <- data_training %>% select(c(regressors, TARGET_5Yrs))
+data_logistic <- data_training %>% select(c(all_of(regressors), TARGET_5Yrs))
 
 # scaling the regressors
 for (var in regressors){
@@ -421,14 +428,20 @@ for (var in regressors){
 }
 X_gd <- data_logistic %>% select(-TARGET_5Yrs)
 y_gd <- data_training %>% select(TARGET_5Yrs)
-gradient_descent(X_gd, y_gd, logistic_loss)
+coefficients_gd <- gradient_descent(X_gd, y_gd, logistic_loss)
 ```
 
 To evaluate the efficiency of our algorithm, we compare the estimated coefficients from the gradient descent algorithm to those from the direct implementation of the logistic regression (using the glm library)
 
 ```{r direct_logistic_regression}
 logistic_fit <- glm(unlist(y_gd) ~ GP + PTS + REB + AST + STL + BLK + TOV - 1, data=data_logistic, family="binomial") #we omit the intercept
-summary(logistic_fit)
+#summary(logistic_fit)
+
+# logistic_fit$coefficients
+# as.double(coefficients_gd)
+
+# display logistic fit and gradient descent coefficients side-by-side
+kable(list(logistic_fit$coefficients, as.double(coefficients_gd)))
 ```
 
 As we can see, the estimated coefficients are quite similar between the two implementations, confirming that the gradient descent algorithm is a highly efficient optimisation algorithm.
@@ -437,30 +450,30 @@ As we can see, the estimated coefficients are quite similar between the two impl
 
 The model development section starts with a logistic regression model fit on all predictors, using tidymodels. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the z-tests in the summary below.
 
-```{r logistic_regression_model}
+```{r logistic_regression_model, warning=FALSE}
 logistic_model <- logistic_reg() %>%
   set_engine("glm") %>%
   set_mode("classification") %>%
   fit(TARGET_5Yrs ~., data=data_training)
-tidy(logistic_model) %>% as_tibble() %>% print(n=40)
+kable(tidy(logistic_model)) %>% scroll_box(height = "400px") #%>% as_tibble() %>% print(n=40)
 ```
 
 *Note*: The logistic model includes one dummy variable for all but one level (the reference level) of each categorical variable.
 
-We can use the p-values shown in the output to conclude whether the variable coefficients are significant (at the 5% level). We see that the only significant coefficients are:
+We can use the p-values shown in the output to conclude whether the variable coefficients are significant (at the 5% level). We see that the only significant coefficients (with p-value below 0.05) are:
 
 * GP : games played per season
 * Year_Drafted : the year the player got drafted
 * Win_Perc : the winning percentage of the team the player plays for
 * Year_Debut : the year the player debuted his career
 
-This is indeed a striking result: one might expect the game performance of a player to be indicative of how his talent and therefore of his ability to last longer in the NBA. With the debute and draft year variables being significant, there seems to be a time trend in the NBA drafting process whereby talented players tend to get drafted around the same time. A possible explanation is that drafting more talented players at the same time increases competitiveness in the league, pushing talented players to play even better and stay longer in the NBA.
+This is indeed a striking result: one might expect the game performance of a player to be indicative of his talent and therefore of his ability to go further in the NBA. With the debut and draft year variables being significant, there seems to be a time trend in the NBA drafting process whereby talented players tend to get drafted around the same time. A possible explanation is that drafting more talented players at the same time increases competitiveness in the league, pushing talented players to play even better and stay longer in the NBA.
 
 However, we should note that all the variables related to points scored by a player in a game such as the total number of points, free throws, 3 pointers etc. are all highly correlated. In particular, this may mean that the insignificance of the corresponding coefficients is a result of multicollinearity and not the true lack of an association with the outcome variable.
 Similarly, it may be argued that performance on offense and defense captured by variables such as steal, block, assist, rebound etc. exhibit correlation. Top players in the NBA are generally good in both offense and defense.
 
 A final note on significance regarding categorical variables:
-Logistic regression uses *reference level coding*. The z-test comapres each of the non-reference categories to the reference (ommitted) one. It is quite possible for none of those to be significant, but there to be significant differences amongst the non-reference categories.
+Logistic regression uses *reference level coding*. The z-test compares each of the non-reference categories to the reference (omitted) one. It is quite possible for none of those to be significant, but there to be significant differences amongst the non-reference categories.
 
 **Predictions and model accuracy**
 
@@ -482,13 +495,13 @@ metrics(logistic_pred_results, truth=TARGET_5Yrs, estimate = .pred_class)
 
 The logistic regression model yields an accuracy of nearly 78%. For our classification task, this can be seen as a good score indicating that a linear classification boundary fits our data well.
 
-As a next step, we check for non-linearity using another classification approach - that of Support Vector Machines (SVM). As opposed to logistic regressional, SVM allow us to classify data points according to non-linear decision boundaries.
+As a next step, we check for non-linearity using another classification approach - that of Support Vector Machines (SVM). As opposed to logistic regression, SVM allows us to classify data points according to non-linear decision boundaries.
 
 ## SVM
 
 #### SVM with a radial kernel
 
-When using a Radial Basis (RBF) Kernel, the SVM algorithm measures the Eucledian distance (as a measure of similarity) between points in the space. Consequently, it has a very local behaviour in the sense that only nearby training observations affect the classification of a test observation.
+When using a Radial Basis (RBF) Kernel, the SVM algorithm measures the Euclidian distance (as a measure of similarity) between points in the space. Consequently, it has a very local behaviour in the sense that only nearby training observations affect the classification of a test observation.
 Similar to the KNN algorithm, RBF Kernel has the advantage of overcoming space complexity as, instead of reusing all of the dataset, it only needs to store the support vectors during training. The support vectors are the data points that are the closest to the decision boundary and define the margin of the classifier
 
 ```{r svm}
@@ -533,8 +546,6 @@ From these two results, we can surprisingly conclude that a linear classificatio
 
 We now move onto a very different classification approach: decision-tree classification. Decision trees have the advantage of being very interpretable, allowing us to directly visualise the relationship between the outcome and the explanatory variables.
 
-To get more sensible results, we use the undummied version of our data.
-
 ```{r decision_tree}
 #data_training$TARGET_5Yrs <- as.factor(Train$TARGET_5Yrs)
 tree <- decision_tree() %>%
@@ -558,10 +569,10 @@ metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class)
 
  * Year of debut seems to be the most important factor determining the success of an NBA player.
   * Time as a factor: Regardless of other factors, it seems that players who debuted after 2013 do not have long careers in the NBA. This may be due to the fact that the 2011-2012 season was shortened from the normal 82 games per team to 66, after a new collective bargaining agreement (CBA) took place between owners of NBA teams and the players themselves, causing nearly two months of inactivity before it has been finally reached. Although such lockouts are not common in the NBA league, capital loss and concurrency between small and big market teams can cause imbalance within the NBA Association. Such lockouts are expected to decrease the performance of players as well as the potential of talented rookies getting into the league in the course of the season.
- * The round the player gets drafted in is a second important factor. It seems that players who do not get drafted in the 1st round are almost guaranteed to last long in the NBA (provided they play more than 50 games per season). Although this result may seem surprising, it is usually the case that team owners prefer drafting players in susbequent rounds rather than in the first, given how much expectations are put in the first rounders and how much it is expensive to hire them.
+ * The round the player gets drafted in is a second important factor. It seems that players who do not get drafted in the 1st round are almost guaranteed to last long in the NBA (provided they play more than 50 games per season). Although this result may seem surprising, it is usually the case that team owners prefer drafting players in subsequent rounds rather than in the first, given how much expectations are put in the first rounders and how much it is expensive to hire them.
 
 * This tree-like visualisation is very useful in that it allows one with very little background understanding to generate predictions regarding the classification of an NBA player, by moving through the tree from top to bottom.
-  * Every node consists of 3 numbers: the top one denotes the predicted class (0 or 1), the middle one denotes the problability of belonging to class 1, and last one denotes the percentage of the observations used in that node.
+  * Every node consists of 3 numbers: the top one denotes the predicted class (0 or 1), the middle one denotes the probability of belonging to class 1, and last one denotes the percentage of the observations used in that node.
 
 **Observations**
 
@@ -574,9 +585,7 @@ To improve upon the performance of the decision tree classifier, we consider a r
 
 Decision trees have low bias (they make no assumption about the functional form of the true relationship between the outcome and the predictors) but suffer from high variance (in that the structure of the decision tree is highly sensitive to changes in individual points of the data, so the model certainly overfits). Random forests attempt to address that issue by lowering variance at the expense of a small increase in bias.
 
-Random forest is built by fitting multiple decision trees, then taking the average of the resulting predictions. Each time a split is considered, a random sample of m predictors is chosen as split candidates from the full set of preditors. This ensures that the resulting predictions of the decision trees are not highly correlated (averaging over highly correlated values does not lead to substantial reduction in variance).
-
-As for tree, we also refer to the undumied version of our data
+Random forest is built by fitting multiple decision trees, then taking the average of the resulting predictions. Each time a split is considered, a random sample of m predictors is chosen as split candidates from the full set of predictors. This ensures that the resulting predictions of the decision trees are not highly correlated (averaging over highly correlated values does not lead to substantial reduction in variance).
 ```{r random_forest}
 #random forests fit with tidymodels
 rf <- rand_forest(trees=100, mode="classification") %>%
@@ -613,7 +622,7 @@ predictions_probs %>%
 
 The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positive rate TPR) against 1-specificity (false positive rate FPR). It is known to be a good measure of the performance of a binary classifier.
  * *Specificity*: measure of a model's ability to predict true negatives. It measures the proportion of observations that were correctly predicted to be positive out of all negative observations.
- * *Sensitvity*: measure of a model's ability to predict true positives. It measures the proportion of observations that were correctly predicted to be positive out of all positive observations.
+ * *Sensitivity*: measure of a model's ability to predict true positives. It measures the proportion of observations that were correctly predicted to be positive out of all positive observations.
 
 *Note*: The ROC measure is useful as it does not depend on the class distribution.
 
@@ -688,7 +697,7 @@ data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round
 Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
 ```{r lasso_model}
-## Esimate the Lasso Regression Model 
+## Estimate the Lasso Regression Model 
 
 model_lasso <- glmnet(data.matrix(data_training_lasso), y = data.matrix(outcome_training), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
 #Plot the Lasso Regression Model against Log Lambda Values
@@ -711,14 +720,14 @@ print(beta_hat2)
 
 ### Analysis of the Lasso model above 
 
-Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penality increases. 
+Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penalty increases. 
 
 Most Notably: Win_Perc (Win Percentage of Team in Debut Season),GP (Number of Games Played in Debut Season), MIN (Average Number of Minutes played per game), PTS (Average Number of Points per Game), FG. (Field Goal Percentage) , OREB (Average Offensive Rebounds per Game), AST (Average Number of Assists per Game), Year_Drafted (Year Drafted), Round_Drafted_1 (Dummy Variable for Players Drafted in Round 1)
 
 
 One could develop a convincing story to justify the coefficients displayed above: 
 
-Teams that win more games with a particular group will be more likely to keep most of those players, espcially the main contributers. Therefore, we should not be surprised that the coefficients for Win Percentage and Number of Games Played are positive and relatively large. 
+Teams that win more games with a particular group will be more likely to keep most of those players, especially the main contributors. Therefore, we should not be surprised that the coefficients for Win Percentage and Number of Games Played are positive and relatively large. 
 
 What perhaps is most interesting is the fact that Defensive Rebounds, Steals and Turnovers seem to have a relatively insignificant impact on a player's ability to reach year 5. Whilst there are players who pride themselves on their ability to defend (E.g. Draymond Green), in reality the structure of the game lends itself far more to incentivise scoring more points as opposed to defending more points. 
 
@@ -727,9 +736,9 @@ Important to note that we cannot consider this regression causal. Our dataset ha
 
 For example, we do not know if players may have been played through injuries or been injured in their final college season. This lack of information muddies any interpretation we can make on the data above. 
 
--A good example of this is a player not in our dataset Markelle Fultz. Markelle was drafted first overall in the 2017 NBA draft but had a terrible season after developing a neurogenic syndrome that inhibited his shooting motion. Despite this, Markelle played the entire season and put up terrible numbers. 
+-A good example of this is a player not in our dataset Markelle Fultz. Markelle was drafted first overall in the 2017 NBA draft but had a terrible season after developing a neurogenic syndrome that inhibited his shooting motion. Despite this, Markelle played the entire season and performed terribly. 
   
-Our current specificaiton does not accurately capture circumstances where confounding variables like injury/ health, team chemistry / personality fit or off-the-field status can impact the likelihood of a player reaching year 5. 
+Our current specification does not accurately capture circumstances where confounding variables like injury/ health, team chemistry / personality fit or off-the-field status can impact the likelihood of a player reaching year 5. 
   
 
 When considering the effect of Round Drafted:
@@ -766,7 +775,7 @@ The data suggests a clear association between being drafted in the first round a
   - Predictive Accuracy without interpretability 
 
 
-Using the results from the Lasso Regression, we want choose the following subset of regressors to train our KNN model: GP, MIN, PTS, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1
+Using the results from the Lasso Regression, we want to choose the following subset of regressors to train our KNN model: GP, MIN, PTS, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1
 
 Given that KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables as possible whilst trying to gain the most information from each variable to improve the predictive accuracy of the model. 
 
