@@ -32,7 +32,9 @@ library(class)
 library(rpart.plot)
 
 raw_data <- read.csv("data_in/nba_logreg.csv")
-raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs)
+raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs) # treat outcome variable as binary factor
+
+#set.seed(1423) # fix all random outcomes throughout the project
 ```
 
 # I: Project Introduction
@@ -163,10 +165,6 @@ As a simple way to get a sense of which of the numeric regressors are most likel
 # generate correlation matrix 
 correlations <- round(cor(as.numeric(data$TARGET_5Yrs), Filter(is.numeric, data)),2)
 correlations[,order(abs(correlations),decreasing = TRUE)] # display, ordered by absolute values
-# kable(round(cor(data$TARGET_5Yrs, Filter(is.numeric, data)),2)) # round to 2 d.p. and pretty-print
-# 
-# test[,order(abs(test),decreasing = TRUE)]
-
 ```
 
 While the correlation coefficient only measures linear relationships, we conclude that metrics involving three-pointers, and years of draft and debut, are likely to be poor predictors of success. Interestingly, so too is team win percentage - suggesting players cannot simply ride the coattails of their team to achieve individual success.
@@ -205,39 +203,6 @@ As we have a large number of predictors, this information may be used when decid
 For the non-numeric variables, we can't use correlation coefficients to gauge predictive power. However, we can inspect the relationship between the variable and the outcome through bar charts.
 
 ```{r char_vars_bar_charts, warning=FALSE}
-# raw_categorics_long <- raw_data %>%
-#   select(TARGET_5Yrs, Round_Drafted, Team, Position) %>%
-#   pivot_longer(!TARGET_5Yrs, names_to = "variable", values_to = "value") %>%
-#   group_by(variable, value, TARGET_5Yrs) %>%
-#   summarise(sum = n())
-#
-# raw_categorics_long$TARGET_5Yrs <- as.character(raw_categorics_long$TARGET_5Yrs)
-#
-# bar_chart <- ggplot(raw_categorics_long, aes(sum, fill = value)) + geom_bar() + facet_wrap(~variable, scales = "free")
-#
-# bar_chart
-
-# bar_plot = function(variable){
-#   data <- raw_data[,c("TARGET_5Yrs",variable)]
-#   colnames(data)[2] = "variable"
-#   data <- data %>%
-#     group_by(TARGET_5Yrs, variable) %>%
-#     tally() %>%
-#     mutate(proportion = n/sum(n))
-# 
-#   data$TARGET_5Yrs <- as.character(data$TARGET_5Yrs)
-# #  data$var <- as.character(data$var)
-# 
-#   print(data %>% ggplot(aes(x = variable , y = proportion, fill = TARGET_5Yrs))+
-#     geom_bar(stat = "identity", width = 0.4, position = position_dodge(width = 0.5)))
-# }
-# 
-# variables = c("Round_Drafted","Position")
-# 
-# for (i in variables){
-#   bar_plot(i)
-# }
-
 # plot for round drafted
 data %>%
   select(Round_Drafted, TARGET_5Yrs) %>%
@@ -276,14 +241,6 @@ We now move on to first preparing the data for, and then fitting, models. Where 
 Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position). The function replaces the categoric variable by n-1 dummy columns, where n is the number of categories the variable can take, to avoid the dummy variable trap.
 
 ```{r create_indicators, warning=FALSE}
-# data_to_split <- data %>%
-#   mutate(n = 1) %>%
-#   pivot_wider(names_from = Round_Drafted, values_from = n,
-#               names_prefix = 'round_drafted_', values_fill = list(n = 0)) %>%
-#   mutate(n = 1) %>%
-#   pivot_wider(names_from = Position, values_from = n,
-#               names_prefix = 'position_', values_fill = list(n = 0))
-
 # step_dummy doesn't give the first variable a dummy. We want this to be undrafted players, so we code it as 0 so it becomes the first value
 data$Round_Drafted[data$Round_Drafted == "U"] <- 0
 
@@ -305,7 +262,7 @@ kable(head(data_to_split))
 Using the "initial_split" function from rsample (part of tidymodels), split data into training and testing, using (the default) 75% of observations for training and 25% for testing. The same data and samples will be used by all models. To preserve the overall class distribution, we stratify on the outcome variable (TARGET_5Yrs).
 
 ```{r train_test_split}
-set.seed(1423)
+set.seed(1423) # fix training-testing split for our project
 data_split <- initial_split(data_to_split, strata = TARGET_5Yrs)
 
 data_training <- data_split %>% training()
@@ -462,10 +419,10 @@ kable(tidy(logistic_model)) %>% scroll_box(height = "400px") #%>% as_tibble() %>
 
 We can use the p-values shown in the output to conclude whether the variable coefficients are significant (at the 5% level). We see that the only significant coefficients (with p-value below 0.05) are:
 
-* GP : games played per season
-* Year_Drafted : the year the player got drafted
-* Win_Perc : the winning percentage of the team the player plays for
-* Year_Debut : the year the player debuted his career
+* GP: games played per season
+* Year_Drafted: the year the player got drafted
+* Win_Perc: the winning percentage of the team the player plays for
+* Year_Debut: the year the player debuted his career
 
 This is indeed a striking result: one might expect the game performance of a player to be indicative of his talent and therefore of his ability to go further in the NBA. With the debut and draft year variables being significant, there seems to be a time trend in the NBA drafting process whereby talented players tend to get drafted around the same time. A possible explanation is that drafting more talented players at the same time increases competitiveness in the league, pushing talented players to play even better and stay longer in the NBA.
 
@@ -481,16 +438,16 @@ Logistic regression uses *reference level coding*. The z-test compares each of t
 # predictions
 logistic_pred_results <- logistic_model %>%
   predict(data_testing) %>%
-  bind_cols(data_testing) %>%
-  glimpse()
+  bind_cols(data_testing) #%>%
+#  glimpse()
 logistic_pred_probs <- logistic_model %>%
   predict(data_testing, type="prob") %>%
   bind_cols(data_testing)
 
 #accuracy
-logistic_pred_results$TARGET_5Yrs <- as.factor(logistic_pred_results$TARGET_5Yrs)
+#logistic_pred_results$TARGET_5Yrs <- as.factor(logistic_pred_results$TARGET_5Yrs)
 ##truth refers to the actual results and estimate refers to what the model predicted
-metrics(logistic_pred_results, truth=TARGET_5Yrs, estimate = .pred_class)
+kable(metrics(logistic_pred_results, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
 The logistic regression model yields an accuracy of nearly 78%. For our classification task, this can be seen as a good score indicating that a linear classification boundary fits our data well.
@@ -509,14 +466,14 @@ svm_rbf <- svm_rbf() %>%
   set_engine("kernlab") %>%
   set_mode("classification") %>%
   fit(TARGET_5Yrs ~ ., data = data_training)
-svm_rbf
+#svm_rbf
 
 ## Predictions and model accuracy
 predictions_svm <- svm_rbf %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-predictions_svm$TARGET_5Yrs <- as.factor(predictions_svm$TARGET_5Yrs)
-metrics(predictions_svm, truth=TARGET_5Yrs, estimate = .pred_class)
+#predictions_svm$TARGET_5Yrs <- as.factor(predictions_svm$TARGET_5Yrs)
+kable(metrics(predictions_svm, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
 The RBF Kernel yields a predictive accuracy of about 75% which is slightly lower than logistic regression.
@@ -526,16 +483,16 @@ The RBF Kernel yields a predictive accuracy of about 75% which is slightly lower
 ```{r svm_polynomial_kernel}
 svm_poly <- svm_poly() %>%
   set_engine("kernlab") %>%
-  set_mode("classification") %>%
+  set_mode("classification") %>% 
   fit(TARGET_5Yrs ~., data=data_training)
-svm_poly
+#svm_poly
 
 ## Predictions and model accuracy
 predictions_svm_poly <- svm_poly %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-predictions_svm_poly$TARGET_5Yrs <- as.factor(predictions_svm_poly$TARGET_5Yrs)
-metrics(predictions_svm_poly, truth=TARGET_5Yrs, estimate = .pred_class)
+#predictions_svm_poly$TARGET_5Yrs <- as.factor(predictions_svm_poly$TARGET_5Yrs)
+kable(metrics(predictions_svm_poly, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
 The polynomial kernel yields an accuracy of 76% which is lower but closer to the accuracy of logistic regression.
@@ -544,25 +501,25 @@ From these two results, we can surprisingly conclude that a linear classificatio
 
 ## Decision Tree
 
-We now move onto a very different classification approach: decision-tree classification. Decision trees have the advantage of being very interpretable, allowing us to directly visualise the relationship between the outcome and the explanatory variables.
+We now move onto a very different classification approach: decision-tree classification. Decision trees have the advantage of being very interpretable, allowing us to directly visualise the relationship between the outcome and the explanatory variables. Since the focus of this model is interpretability, we limit the tree depth to make the plot readable, and the flow of splits easier to understand. 
 
 ```{r decision_tree}
 #data_training$TARGET_5Yrs <- as.factor(Train$TARGET_5Yrs)
-tree <- decision_tree() %>%
+tree <- decision_tree(tree_depth = 5) %>%
   set_engine("rpart") %>%
   set_mode("classification") %>%
   fit(TARGET_5Yrs ~ ., data = data_training)
 
 tree %>%
   extract_fit_engine() %>%
-  rpart.plot(roundint=FALSE, type = 5)
+  rpart.plot(roundint = FALSE, type = 5)
 
 ##Predictions and model accuracy
 predictions_tree <- tree %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-predictions_tree$TARGET_5Yrs <- as.factor(predictions_tree$TARGET_5Yrs)
-metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class)
+#predictions_tree$TARGET_5Yrs <- as.factor(predictions_tree$TARGET_5Yrs)
+kable(metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
 **Interpretation of results**
@@ -591,18 +548,18 @@ Random forest is built by fitting multiple decision trees, then taking the avera
 rf <- rand_forest(trees=100, mode="classification") %>%
     set_engine("randomForest") %>%
     fit(TARGET_5Yrs~., data = data_training)
-rf
+#rf
 
 ## Predictions and model accuracy
 predictions_rf <- rf %>%
   predict(data_testing) %>%
-  bind_cols(data_testing) %>%
-  glimpse()
+  bind_cols(data_testing) #%>%
+#  glimpse()
 
 #using metrics to measure the performance of the model
-predictions_rf$TARGET_5Yrs <- as.factor(predictions_rf$TARGET_5Yrs)
+#predictions_rf$TARGET_5Yrs <- as.factor(predictions_rf$TARGET_5Yrs)
 #truth refers to the actual results and estimate refers to what the model predicted
-metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class)
+kable(metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
 Random forests achieve a predictive accuracy of roughly 78% which is higher than our previous single decision tree classifier, as expected.
@@ -611,17 +568,18 @@ Random forests achieve a predictive accuracy of roughly 78% which is higher than
 predictions_probs <- rf %>%
   predict(data_testing, type="prob") %>%
   bind_cols(data_testing)
-glimpse(predictions_probs)
-
+#glimpse(predictions_probs)
 
 #plotting the results
 predictions_probs %>%
-  roc_curve(as.factor(TARGET_5Yrs), .pred_0) %>%
+  roc_curve(TARGET_5Yrs, .pred_0) %>%
   autoplot()
 ```
 
 The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positive rate TPR) against 1-specificity (false positive rate FPR). It is known to be a good measure of the performance of a binary classifier.
+
  * *Specificity*: measure of a model's ability to predict true negatives. It measures the proportion of observations that were correctly predicted to be positive out of all negative observations.
+ 
  * *Sensitivity*: measure of a model's ability to predict true positives. It measures the proportion of observations that were correctly predicted to be positive out of all positive observations.
 
 *Note*: The ROC measure is useful as it does not depend on the class distribution.
@@ -636,12 +594,6 @@ The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positi
 The first step is to take all of the appropriate variables from our dataset and separate the regressors and our outcome variable. 
 
 ```{r lasso_variable_selection}
-# Train_data_KNN <- data_training %>%
-#   select(X3P.,Win_Perc,GP,MIN,PTS,FG.,FT.,OREB,DREB,AST,STL,BLK,TOV,Year_Drafted, starts_with("Round_Drafted"),starts_with("Position"))
-
-# Test_data_KNN <- data_testing %>%
-#   select(X3P.,Win_Perc,GP,MIN,PTS,FG.,FT.,OREB,DREB,AST,STL,BLK,TOV,Year_Drafted, starts_with("Round_Drafted"),starts_with("Position"))
-
 data_training_lasso <- data_training %>%
   select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
 
@@ -653,7 +605,7 @@ outcome_testing <- data_testing %>% select(TARGET_5Yrs)
 ```
 
 
-With 34 different regressors, this may not be the optimal set of regressors for our model. We want to complete some process of subset selection to not only draw some inference about what variables may be more significant, but also reduce the dimensionality of the KNN model as KNN is susceptible to the curse of dimensionality. 
+With 34 different regressors, this may not be the optimal set of regressors for our model. We want to complete some process of subset selection to not only draw some inference about which variables may be more significant, but also reduce the dimensionality of the KNN model as KNN is susceptible to the curse of dimensionality. 
 
 Additionally, in 1989 the structure of the draft changed from 10 rounds to just 2. In order to avoid having to remove data values, but still accurately represent the significance of being drafted, we will need to create a time dummy variable and add interaction terms to the Round_Drafted_# dummy variables. 
 
@@ -663,59 +615,32 @@ Additionally, in 1989 the structure of the draft changed from 10 rounds to just 
 data_training_lasso$debut_before_1989 <- ifelse(data_training_lasso$Year_Debut >= 1989, 0, 1)
 data_testing_lasso$debut_before_1989 <- ifelse(data_testing_lasso$Year_Debut >= 1989, 0, 1)
 
-# Create Interaction terms for Round_Drafted_# with Year_debut_before_1989
+# Vector of names for the new interaction columns
 names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8"), "_before_1989")
 
+# Create interaction columns for Round_Drafted_# with Year_debut_before_1989
 data_training_lasso[names] <- lapply(select(data_training_lasso,starts_with("Round_Drafted")), function(x) x*data_training_lasso$debut_before_1989)
-
 data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round_Drafted")), function(x) x*data_testing_lasso$debut_before_1989)
-
-
-# # Create Interaction terms for Round_Drafted_# and Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_1_before1989 <- Train_data_KNN$Round_Drafted_X1*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_2_before1989 <- Train_data_KNN$Round_Drafted_X2*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_3_before1989 <- Train_data_KNN$Round_Drafted_X3*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_4_before1989 <- Train_data_KNN$Round_Drafted_X4*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_5_before1989 <- Train_data_KNN$Round_Drafted_X5*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_6_before1989 <- Train_data_KNN$Round_Drafted_X6*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_7_before1989 <- Train_data_KNN$Round_Drafted_X7*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_8_before1989 <- Train_data_KNN$Round_Drafted_X8*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_10_before1989 <- Train_data_KNN$Round_Drafted_X10*Train_data_KNN$Year_debut_before_1989
-# Train_data_KNN$Round_Drafted_Undrafted_before1989 <- Train_data_KNN$Round_Drafted_U*Train_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_1_before1989 <- Test_data_KNN$Round_Drafted_X1*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_2_before1989 <- Test_data_KNN$Round_Drafted_X2*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_3_before1989 <- Test_data_KNN$Round_Drafted_X3*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_4_before1989 <- Test_data_KNN$Round_Drafted_X4*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_5_before1989 <- Test_data_KNN$Round_Drafted_X5*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_6_before1989 <- Test_data_KNN$Round_Drafted_X6*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_7_before1989 <- Test_data_KNN$Round_Drafted_X7*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_8_before1989 <- Test_data_KNN$Round_Drafted_X8*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_10_before1989 <- Test_data_KNN$Round_Drafted_X10*Test_data_KNN$Year_debut_before_1989
-# Test_data_KNN$Round_Drafted_Undrafted_before1989 <- Test_data_KNN$Round_Drafted_U*Test_data_KNN$Year_debut_before_1989
 ```
 
 Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
 ```{r lasso_model}
-## Estimate the Lasso Regression Model 
-
+# Estimate the Lasso Regression Model 
 model_lasso <- glmnet(data.matrix(data_training_lasso), y = data.matrix(outcome_training), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
-#Plot the Lasso Regression Model against Log Lambda Values
-plot(model_lasso, xvar = "lambda")
-
+plot(model_lasso, xvar = "lambda") #Plot the Lasso Regression Model against Log Lambda Values
 beta_hat <- coef(model_lasso)
-#Return the coefficients of the Lasso Regression Model for the different values of Lambda 
-beta_hat
+# #Return the coefficients of the Lasso Regression Model for the different values of Lambda 
+#beta_hat
 
-## Find the optimal value of Lambda
-
-# The code below estimates the value for Lambda that gives the largest area beneath the ROC (Receiver Operating Characteristic) Curve. These areas are esimated using K-fold cross Validation. 
-cv_lasso <- cv.glmnet(x = data.matrix(data_training_lasso), y = data.matrix(outcome_training), type.measure = "auc" , nfolds = 10)
+# Optimal value of Lambda: estimates the value for Lambda that gives the largest area beneath the ROC (Receiver Operating Characteristic) Curve. These areas are estimated using K-fold cross-validation. 
+cv_lasso <- cv.glmnet(x = data.matrix(data_training_lasso), y = data.matrix(outcome_training), type.measure = "mse" , nfolds = 10)
 lambda = cv_lasso$lambda.min
 #Return the coefficients associated with the model that produces the largest area under the ROC curve in the training data. 
 beta_hat2 <- coef(model_lasso, s = lambda)
 plot(cv_lasso)
-print(beta_hat2)
+#print(beta_hat2)
+beta_hat2[which(rowSums(beta_hat2) > 0),] # print non-zero coefficients
 ```
 
 ### Analysis of the Lasso model above 
@@ -781,14 +706,14 @@ Given that KNN models are susceptible to the curse of dimensionality, it is impo
 
 Looking at the Lasso results above, this subset of regressors seems to represent the variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
 
-```{r tidymodels_knn}
-vars <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "Win_Perc", "Year_Debut", "Round_Drafted_X1", "Round_Drafted_1_before_1989")
+```{r knn}
+vars <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "Win_Perc", "Round_Drafted_X1", "Round_Drafted_1_before_1989")
 
 data_training_KNN <- data_training_lasso %>%
-  select(vars) %>% bind_cols(outcome_training)
+  select(all_of(vars)) %>% bind_cols(outcome_training)
 
 data_testing_KNN <- data_testing_lasso %>%
-  select(vars) %>% bind_cols(outcome_testing)
+  select(all_of(vars)) %>% bind_cols(outcome_testing)
 
 knn <- nearest_neighbor(mode = "classification", engine = "kknn") %>% 
   fit(TARGET_5Yrs ~., data = data_training_KNN)
@@ -796,8 +721,8 @@ knn <- nearest_neighbor(mode = "classification", engine = "kknn") %>%
 predictions <- knn %>%
   predict(data_testing_KNN) %>%
   bind_cols(data_testing_KNN)
-predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs)
-metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class)
+#predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs)
+kable(metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
 
