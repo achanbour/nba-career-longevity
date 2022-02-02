@@ -742,7 +742,7 @@ data_training_KNN <- data_training_lasso %>%
 data_testing_KNN <- data_testing_lasso %>%
   select(all_of(vars)) %>% bind_cols(outcome_testing)
 
-knn <- nearest_neighbor(mode = "classification", engine = "kknn") %>% 
+knn <- nearest_neighbor(mode = "classification", engine = "kknn", neighbors = round(sqrt(nrow(data_training)))) %>% 
   fit(TARGET_5Yrs ~., data = data_training_KNN)
 
 predictions <- knn %>%
