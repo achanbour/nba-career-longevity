@@ -49,9 +49,7 @@ The objective of this project is to build classification models to predict wheth
 
 This dataset was collected from https://data.world/exercises/logistic-regression-exercise-1
 
-Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that team's record at the end of the season was web scraped from Wikipedia using a Python script not included in this document.
-
-Before being web scraped, the dataset was checked for repeated values and missing values, typos and errors. The data was validated using https://www.basketball-reference.com/?
+Additional data regarding the year players were drafted, what round they were drafted in, the year they debuted, the team they played for and that team's record at the end of the season was web scraped from Wikipedia using a Python script we wrote.
 
 ## Variable descriptions
 
