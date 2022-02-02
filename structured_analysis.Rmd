@@ -123,12 +123,15 @@ sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(d
 
 For some metrics, such as free throws, we have 3 variables. One for attempts, one for successes, and one for percentage success = 100*(attempts/successes). Including all three variables leads to collinearity when we come to model, as each can be calculated directly from the other two, so we drop the attempts variables, as they intuitively seems least useful. 
 
-Also, total rebounds = offensive rebounds + defensive rebounds, so we drop the total variable. 
+Also, total rebounds = offensive rebounds + defensive rebounds, so we drop the total rebounds variable. 
 
 We also drop the following variables:
+
   1) **Player names**, as they will serve no purpose in our analysis.
+  
   2) **Team names**, as most of the predictive power of the team should be captured by the team win percentage variable (which is far easier to work with than 30 dummy variables for the teams).
-  3) **Year drafted**, as this information is captured more effectively by the year debut variable:
+  
+  3) **Year drafted**, as this information is captured more effectively by the year debut variable. Additionally, there are instances where players declare for the draft, but do not make their debut in the same year for various reasons. For example, NBA Hall of Famer David Robinson was selected 1st overall in the NBA Draft by the San Antonio Spurs but could not play for two years because he had to fulfil his active-duty obligations with the Navy.
 
 ```{r remove_collinear_and_uninformative}
 data <- data_no_nas %>%
@@ -147,14 +150,17 @@ We find a number of issues:
 
 **Round drafted**
 
-  - There are two different representations of U (undrafted), because one of them has a trailing space
-  - Our dataset doesn't contain any players that were drafted in round 9. This is noted but not likely to cause issues, and is because a) the sample is quite small, and b) round 9 didn't exist past 1989. This will be discussed again later on.
-  - Very few players are drafted in other high round numbers, such as round 10 (only 1 player). This may cause problems, because the factor level 10 can only exist in either the training or testing data, but not both.
+  1) There are two different representations of U (undrafted), because one of them has a trailing space
+  
+  2) Our dataset doesn't contain any players that were drafted in round 9. This is noted but not likely to cause issues, and is because a) the sample is quite small, and b) round 9 didn't exist past 1989. This will be discussed again later on.
+  
+  3) Very few players are drafted in other high round numbers, such as round 10 (only 1 player). This may cause problems, because the factor level 10 can only exist in either the training or testing data, but not both.
   
 **Position**
 
-  - Again, there are two different representations of Center, due to a trailing space
-  - There are two different representations of Point guard, this time due to a letter case
+  1) Again, there are two different representations of Center, due to a trailing space
+  
+  2) There are two different representations of Point guard, this time due to a letter case
   
 We now fix these issues:
 
@@ -436,7 +442,7 @@ logistic_fit <- glm(unlist(y_gd) ~ GP + PTS + AST + STL + BLK + TOV - 1, data=da
 kable(list(logistic_fit$coefficients, as.double(coefficients_gd)))
 ```
 
-As we can see, the estimated coefficients are quite similar between the two implementations, confirming that the gradient descent algorithm is a highly efficient optimisation algorithm.
+As we can see, the estimated coefficients are quite similar between the two implementations (direct implementation of logistic regression, right, and gradient descent, left), confirming that the gradient descent algorithm is a highly efficient optimisation algorithm.
 
 ### Feature selection with logistic regression
 
@@ -452,7 +458,7 @@ kable(tidy(logistic_model)) %>% scroll_box(height = "400px") #%>% as_tibble() %>
 
 *Note*: The logistic model includes one dummy variable for all but one level (the reference level) of each categorical variable.
 
-We can use the p-values shown in the output to conclude whether the variable coefficients are significant (at the 5% level). We see that the only significant coefficients (with p-value below 0.05) are:
+We can use the p-values shown in the output to conclude whether the variable coefficients are significant (at the 5%? level). We see that the only significant coefficients (with p-value below 0.05?) are:
 
 * GP: games played per season
 * Year_Drafted: the year the player got drafted
@@ -469,7 +475,7 @@ Logistic regression uses *reference level coding*. The z-test compares each of t
 
 **Predictions and model accuracy**
 
-```{r logistic_evaluation}
+```{r logistic_evaluation, warning = FALSE}
 # predictions
 logistic_pred_results <- logistic_model %>%
   predict(data_testing) %>%
@@ -540,7 +546,7 @@ We now move onto a very different classification approach: decision-tree classif
 
 ```{r decision_tree}
 #data_training$TARGET_5Yrs <- as.factor(Train$TARGET_5Yrs)
-tree <- decision_tree(tree_depth = 5) %>%
+tree <- decision_tree(tree_depth = 3) %>%
   set_engine("rpart") %>%
   set_mode("classification") %>%
   fit(TARGET_5Yrs ~ ., data = data_training)
@@ -623,14 +629,34 @@ The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positi
 
 
 ## Lasso + KNN
-  - Relatively interpretable 
+  <!-- - Relatively interpretable  -->
   - High Dimensionality 
 
 The first step is to take all of the appropriate variables from our dataset and separate the regressors and our outcome variable. 
 
-With 34 different regressors, this may not be the optimal set of regressors for our model. We want to complete some process of subset selection to not only draw some inference about which variables may be more significant, but also reduce the dimensionality of the KNN model as KNN is susceptible to the curse of dimensionality. 
+With 40 different regressors, this may not be the optimal set of regressors for our model. We want to complete some process of subset selection to not only draw some inference about which variables may be more significant, but also reduce the dimensionality of the KNN model as KNN is susceptible to the curse of dimensionality. 
 
-Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
+When considering the effect of Round_Drafted:
+
+\begin{equation}
+
+\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 \\
+
+(\beta_1 \ +   \beta_2Year\_Debuted\_Before\_1989 )Round\_Drafted\_\# 
+
+\end{equation}
+
+Where:  
+
+\begin{equation}   
+Year\_Debuted\_Before\_1989 = 
+     \begin{cases}
+       1 &\quad\text{if Year_Debut}<1989\\
+       0 &\quad\text{if Year_Debut} \ge1989 \\
+     \end{cases}
+\end{equation}    
+
+Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial", the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
 ```{r lasso_model}
 data_training_lasso <- data_training %>% select(-TARGET_5Yrs)
@@ -660,64 +686,52 @@ beta_hat2[which(rowSums(beta_hat2) > 0),] # print non-zero coefficients
 
 Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penalty increases. 
 
-Most Notably: Win_Perc (Win Percentage of Team in Debut Season),GP (Number of Games Played in Debut Season), MIN (Average Number of Minutes played per game), PTS (Average Number of Points per Game), FG. (Field Goal Percentage) , OREB (Average Offensive Rebounds per Game), AST (Average Number of Assists per Game), Year_Drafted (Year Drafted), Round_Drafted_1 (Dummy Variable for Players Drafted in Round 1)
+Most Notably: 
+
+  -GP (Number of Games Played in Debut Season) 
+  
+  -MIN (Average Number of Minutes played per game) 
+  
+  -PTS (Average Number of Points per Game) 
+  
+  -FG. (Field Goal Percentage)  
+  
+  -OREB (Average Offensive Rebounds per Game)
+  
+  -Win_Perc (Win Percentage of Team in Debut Season) 
+  -Year_Drafted (Year Drafted), 
+  -Round_Drafted_1 (Dummy Variable for Players Drafted in Round 1) 
+  -Round_Drafted_1_before_1989 (Interaction Variable for Players Drafted in Round 1 Before 1989)
 
 
 One could develop a convincing story to justify the coefficients displayed above: 
 
 Teams that win more games with a particular group will be more likely to keep most of those players, especially the main contributors. Therefore, we should not be surprised that the coefficients for Win Percentage and Number of Games Played are positive and relatively large. 
 
-What perhaps is most interesting is the fact that Defensive Rebounds, Steals and Turnovers seem to have a relatively insignificant impact on a player's ability to reach year 5. Whilst there are players who pride themselves on their ability to defend (E.g. Draymond Green), in reality the structure of the game lends itself far more to incentivise scoring more points as opposed to defending more points. 
+What perhaps is most interesting is the fact that Defensive Rebounds, Steals and Turnovers seem to have a relatively insignificant impact on a player's ability to reach year 5. Whilst there are players who pride themselves on their ability to defend (E.g. Draymond Green - 4x NBA All-Defensive First Team), in reality the structure of the game seems to lend itself more to offensive attributes and point scoring ability.  
 
 
-Important to note that we cannot consider this regression causal. Our dataset has not been collected randomly and we cannot consider our dataset as good as randomly selected as there are still cofounding variables that have not been accounted for. 
+It is important to note that we cannot consider this regression causal. Our investigation does not revolve around some treatment variable that we could conclude is randomly assigned. Additionally, there are still confounding variables that are not accounted for in our dataset.  
 
-For example, we do not know if players may have been played through injuries or been injured in their final college season. This lack of information muddies any interpretation we can make on the data above. 
+For example, we have no information on the injury status of players. Players may have played through injuries or been injured in their final college season, thus influencing what round they get drafted in.
 
--A good example of this is a player not in our dataset Markelle Fultz. Markelle was drafted first overall in the 2017 NBA draft but had a terrible season after developing a neurogenic syndrome that inhibited his shooting motion. Despite this, Markelle played the entire season and performed terribly. 
+Several players like Blake Griffin, Joel Embiid, Ben Simmons and Julius Randle suffered season ending injuries in their rookie seasons. Despite this, all of these plays have gone on to become NBA stars and play beyond 5 years. 
   
-Our current specification does not accurately capture circumstances where confounding variables like injury/ health, team chemistry / personality fit or off-the-field status can impact the likelihood of a player reaching year 5. 
+Our current specification fails to accurately capture circumstances where confounding variables like injury and health, team chemistry, coaching, and off-the-field status can impact the likelihood of a player reaching year 5. 
   
+The data suggests an association between being drafted in the first round and the likelihood of making it to year 5. This is consistent with the notion that players drafted in the first round will have performed better in college or international leagues before declaring for the draft. 
 
-When considering the effect of Round Drafted:
+One could argue that the round a player is drafted in functions as a proxy for what teams expect their ability to be. It must be noted that some teams may not certain draft players for schematic or logistical reasons; Some teams may need to improve a particular position and not draft the best available player. 
 
-\begin{equation}
-
-\beta_1Round\_Drafted\_\# + \beta_2Round\_Drafted\_\# \  * Year\_Debuted\_Before\_1989 \\
-
-(\beta_1 \ +   \beta_2Year\_Debuted\_Before\_1989 )Round\_Drafted\_\# 
-
-\end{equation}
-
-Where:  
-
-\begin{equation}   
-Year\_Debuted\_Before\_1989 = 
-     \begin{cases}
-       1 &\quad\text{if Year_Debut}<1989\\
-       0 &\quad\text{if Year_Debut} \ge1989 \\
-     \end{cases}
-\end{equation}     
-
-In other words, the effect for players drafted after 1989 is captured by $\beta_1$ and players drafted before 1989 is captured by $\beta_1 + \beta_2$
- 
-The data suggests a clear association between being drafted in the first round and the likelihood of making it to year 5. This is consistent with the notion that players drafted in the first round will have performed better in college or international leagues before they declared for the draft. You could argue that the round a player is drafted functions as a good proxy for the expectations for a player coming into the league. 
+However, one could therefore argue that teams may be more lenient with first round draft picks and give them more opportunities than lower drafted players; Teams believe that first round draft picks have a higher ceiling and may just need time to adapt to the NBA. 
 
 
- - Compare this model with baseline models:
-    * Logistic Regression
-    * Trees 
+Using the results from the Lasso Regression, we want to choose the following subset of regressors to train our KNN model: GP, MIN, PTS ,FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1, Round_Drafted_1_before_1989
 
-### KNN
+As KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables possible whilst trying to maximise the amount of information gained.
 
-  - Predictive Accuracy without interpretability 
+Looking at the Lasso results above, this subset of regressors appears to represent the variables that capture the most information. 
 
-
-Using the results from the Lasso Regression, we want to choose the following subset of regressors to train our KNN model: GP, MIN, PTS, FG., FTM, OREB, Win_Perc, Year_Debut, Round_Drafted_X1
-
-Given that KNN models are susceptible to the curse of dimensionality, it is important to choose the smallest number of variables as possible whilst trying to gain the most information from each variable to improve the predictive accuracy of the model. 
-
-Looking at the Lasso results above, this subset of regressors seems to represent the variables that capture the most information regardless of the magnitude of the penalty and appear to be the most significant. 
 
 ```{r knn}
 vars <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "Win_Perc", "Round_Drafted_X1", "Round_Drafted_1_before_1989")
