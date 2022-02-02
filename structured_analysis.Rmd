@@ -132,7 +132,7 @@ We also drop the following variables:
 
 ```{r remove_collinear_and_uninformative}
 data <- data_no_nas %>%
-  select(Name, Year_Drafted, Team, -FGA, -X3PA, -FTA, -REB, -Year_Drafted)
+  select(-Name, -Year_Drafted, -Team, -FGA, -X3PA, -FTA, -REB, -Year_Drafted)
 ```
 
 ## Check character variable values
@@ -170,7 +170,7 @@ data %>% count(Round_Drafted) #%>% arrange(Round_Drafted)
 data %>% count(Position) #%>% arrange(Position)
 ```
 
-## Correlations between regressors and outcome variable
+## Correlations of regressors with outcome variable
 
 As a simple way to get a sense of which of the numeric regressors are most likely to have predictive power, we take the correlation coefficient of each numeric regressor with the outcome variable (TARGET_5Yrs)
 
@@ -280,15 +280,15 @@ To correct for this change in meaning of the draft, we will need to create a tim
 
 ```{r round_drafted_year_debut_interactions}
 # Create Dummy variables for debut before 1989
-data_to_split$debut_before_1989 <- ifelse(data_training_lasso$Year_Debut >= 1989, 0, 1)
+data_to_split$debut_before_1989 <- ifelse(data_to_split$Year_Debut >= 1989, 0, 1)
 #data_testing_lasso$debut_before_1989 <- ifelse(data_testing_lasso$Year_Debut >= 1989, 0, 1)
 
 # Vector of names for the new interaction columns
 names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8"), "_before_1989")
 
 # Create interaction columns for Round_Drafted_# with Year_debut_before_1989
-data_training_lasso[names] <- lapply(select(data_training_lasso,starts_with("Round_Drafted")), function(x) x*data_training_lasso$debut_before_1989)
-data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round_Drafted")), function(x) x*data_testing_lasso$debut_before_1989)
+data_to_split[names] <- lapply(select(data_to_split,starts_with("Round_Drafted")), function(x) x*data_to_split$debut_before_1989)
+# data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round_Drafted")), function(x) x*data_testing_lasso$debut_before_1989)
 ```
 
 
@@ -406,11 +406,11 @@ gradient_descent <- function(X, y, loss_function) {
 We now apply the gradient-descent algorithm to estimate the coefficients of a logistic regression of our target on a subset of predictors.
 The chosen predictors are likely to be weakly correlated, hence they avoid a potential multicollinearity problem in our model.
 The chosen predictors (which are continuous variables) capture the general performance of a player in both offence and defence without going into more sophisticated details.
-The predictors are: games played, points, rebounds, assists, steals, blocks and turnovers.
+The predictors are: games played, points, rebounds?, assists, steals, blocks and turnovers.
 
 ```{r logistic_variable_selection}
 # selecting the outcome and predictors from the train set
-regressors <- c("GP", "PTS", "REB", "AST", "STL", "BLK", "TOV")
+regressors <- c("GP", "PTS", "AST", "STL", "BLK", "TOV")
 
 data_logistic <- data_training %>% select(c(all_of(regressors), TARGET_5Yrs))
 
@@ -426,7 +426,7 @@ coefficients_gd <- gradient_descent(X_gd, y_gd, logistic_loss)
 To evaluate the efficiency of our algorithm, we compare the estimated coefficients from the gradient descent algorithm to those from the direct implementation of the logistic regression (using the glm library)
 
 ```{r direct_logistic_regression}
-logistic_fit <- glm(unlist(y_gd) ~ GP + PTS + REB + AST + STL + BLK + TOV - 1, data=data_logistic, family="binomial") #we omit the intercept
+logistic_fit <- glm(unlist(y_gd) ~ GP + PTS + AST + STL + BLK + TOV - 1, data=data_logistic, family="binomial") #we omit the intercept
 #summary(logistic_fit)
 
 # logistic_fit$coefficients
@@ -579,18 +579,18 @@ Decision trees have low bias (they make no assumption about the functional form 
 
 Random forest is built by fitting multiple decision trees, then taking the average of the resulting predictions. Each time a split is considered, a random sample of m predictors is chosen as split candidates from the full set of predictors. This ensures that the resulting predictions of the decision trees are not highly correlated (averaging over highly correlated values does not lead to substantial reduction in variance).
 ```{r random_forest}
+set.seed(1423) # set seed to fix outcome of random forest
+
 #random forests fit with tidymodels
-rf <- rand_forest(trees=100, mode="classification") %>%
+rf <- rand_forest(trees = 100, mode="classification") %>%
     set_engine("randomForest") %>%
     fit(TARGET_5Yrs~., data = data_training)
 #rf
-
 ## Predictions and model accuracy
 predictions_rf <- rf %>%
   predict(data_testing) %>%
   bind_cols(data_testing) #%>%
 #  glimpse()
-
 #using metrics to measure the performance of the model
 #predictions_rf$TARGET_5Yrs <- as.factor(predictions_rf$TARGET_5Yrs)
 #truth refers to the actual results and estimate refers to what the model predicted
@@ -622,7 +622,7 @@ The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positi
  Our random forest classifier yields a ROC curve that is significantly above and far of the baseline 45 degrees line where FPR = TPR. This means our classifier gives fairly accurate results in accordance with its relatively high predictive accuracy.
 
 
-## Lasso
+## Lasso + KNN
   - Relatively interpretable 
   - High Dimensionality 
 
@@ -633,6 +633,12 @@ With 34 different regressors, this may not be the optimal set of regressors for 
 Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
 ```{r lasso_model}
+data_training_lasso <- data_training %>% select(-TARGET_5Yrs)
+data_testing_lasso <- data_testing %>% select(-TARGET_5Yrs)
+
+outcome_training <- data_training %>% select(TARGET_5Yrs)
+outcome_testing <- data_testing %>% select(TARGET_5Yrs)
+
 # Estimate the Lasso Regression Model 
 model_lasso <- glmnet(data.matrix(data_training_lasso), y = data.matrix(outcome_training), intercept = FALSE, alpha = 1 , lambda = 10^seq(from = -6, to = 0, by = 0.5), family = "binomial")
 plot(model_lasso, xvar = "lambda") #Plot the Lasso Regression Model against Log Lambda Values
@@ -650,7 +656,7 @@ plot(cv_lasso)
 beta_hat2[which(rowSums(beta_hat2) > 0),] # print non-zero coefficients
 ```
 
-### Analysis of the Lasso model above 
+#### Analysis of the Lasso model above 
 
 Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penalty increases. 
 
@@ -702,7 +708,7 @@ The data suggests a clear association between being drafted in the first round a
     * Logistic Regression
     * Trees 
 
-## KNN
+### KNN
 
   - Predictive Accuracy without interpretability 
 
