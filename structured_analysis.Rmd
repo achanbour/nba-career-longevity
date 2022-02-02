@@ -132,7 +132,7 @@ We also drop the following variables:
 
 ```{r remove_collinear_and_uninformative}
 data <- data_no_nas %>%
-  select(-Name, -Year_Drafted, -Team, -FGA, -X3PA, -FTA, -REB, -Year_Drafted)
+  select(-Name, -Year_Drafted, -Team, -FGA, -X3PA, -FTA, -REB)
 ```
 
 ## Check character variable values
