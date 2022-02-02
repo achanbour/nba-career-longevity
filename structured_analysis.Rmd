@@ -113,11 +113,26 @@ summary(raw_data)
   4) Using the TARGET_5Yrs variable, we see that 817 (63%) of players in the sample reached 5 years, and 482 (37%) did not
   
 5) A small number of NAs are present in the expected 3 pointers column (10 observations). Given this is less than 1% of the sample size, we make the decision to drop all observations with a missing value for any variable, as it will make the model-fitting easier while costing very little in accuracy.
-We drop the player names at this point, as they will serve no purpose in our analysis. We also drop the team names, as most of the predictive power of the team should be captured by the team win percentage variable (which is far easier to work with than 30 dummy variables for the teams):
 
 ```{r omit_nas}
-data <- na.omit(raw_data) %>% select(-Name, -Team)
+data_no_nas <- na.omit(raw_data) #%>% select(-Name, -Team, -Year_Drafted)
 sprintf("NAs omitted, number of obs falls from %s to %s", nrow(raw_data), nrow(data))
+```
+
+## Remove collinear and not-useful variables
+
+For some metrics, such as free throws, we have 3 variables. One for attempts, one for successes, and one for percentage success = 100*(attempts/successes). Including all three variables leads to collinearity when we come to model, as each can be calculated directly from the other two, so we drop the attempts variables, as they intuitively seems least useful. 
+
+Also, total rebounds = offensive rebounds + defensive rebounds, so we drop the total variable. 
+
+We also drop the following variables:
+  1) **Player names**, as they will serve no purpose in our analysis.
+  2) **Team names**, as most of the predictive power of the team should be captured by the team win percentage variable (which is far easier to work with than 30 dummy variables for the teams).
+  3) **Year drafted**, as this information is captured more effectively by the year debut variable:
+
+```{r remove_collinear_and_uninformative}
+data <- data_no_nas %>%
+  select(Name, Year_Drafted, Team, -FGA, -X3PA, -FTA, -REB, -Year_Drafted)
 ```
 
 ## Check character variable values
@@ -254,6 +269,28 @@ data_to_split <- bake(dummy_multi_choice_rec, new_data = data) #%>% select(-Name
 kable(head(data_to_split))
 # glimpse(data_to_split) #
 ```
+
+
+## Correct the Round Drafted variable
+
+In 1989 the structure of the draft changed from 10 rounds to just 2. So, post-1989, fewer players were drafted each year, and rounds drafted values other than 1, 2 and undrafted ceased to exist.
+
+To correct for this change in meaning of the draft, we will need to create a time dummy variable and add interaction terms to the Round_Drafted_# dummy variables. 
+
+
+```{r round_drafted_year_debut_interactions}
+# Create Dummy variables for debut before 1989
+data_to_split$debut_before_1989 <- ifelse(data_training_lasso$Year_Debut >= 1989, 0, 1)
+#data_testing_lasso$debut_before_1989 <- ifelse(data_testing_lasso$Year_Debut >= 1989, 0, 1)
+
+# Vector of names for the new interaction columns
+names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8"), "_before_1989")
+
+# Create interaction columns for Round_Drafted_# with Year_debut_before_1989
+data_training_lasso[names] <- lapply(select(data_training_lasso,starts_with("Round_Drafted")), function(x) x*data_training_lasso$debut_before_1989)
+data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round_Drafted")), function(x) x*data_testing_lasso$debut_before_1989)
+```
+
 
 ## Split dataset into training and testing
 
@@ -591,35 +628,7 @@ The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positi
 
 The first step is to take all of the appropriate variables from our dataset and separate the regressors and our outcome variable. 
 
-```{r lasso_variable_selection}
-data_training_lasso <- data_training %>%
-  select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
-
-data_testing_lasso <- data_testing %>%
-  select(-FGA, -X3PA, -FTA, -REB, -Year_Drafted, -TARGET_5Yrs)
-
-outcome_training <- data_training %>% select(TARGET_5Yrs)
-outcome_testing <- data_testing %>% select(TARGET_5Yrs)
-```
-
-
 With 34 different regressors, this may not be the optimal set of regressors for our model. We want to complete some process of subset selection to not only draw some inference about which variables may be more significant, but also reduce the dimensionality of the KNN model as KNN is susceptible to the curse of dimensionality. 
-
-Additionally, in 1989 the structure of the draft changed from 10 rounds to just 2. In order to avoid having to remove data values, but still accurately represent the significance of being drafted, we will need to create a time dummy variable and add interaction terms to the Round_Drafted_# dummy variables. 
-
-
-```{r round_drafted_year_debut_interactions}
-# Create Dummy variables for debut before 1989
-data_training_lasso$debut_before_1989 <- ifelse(data_training_lasso$Year_Debut >= 1989, 0, 1)
-data_testing_lasso$debut_before_1989 <- ifelse(data_testing_lasso$Year_Debut >= 1989, 0, 1)
-
-# Vector of names for the new interaction columns
-names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8"), "_before_1989")
-
-# Create interaction columns for Round_Drafted_# with Year_debut_before_1989
-data_training_lasso[names] <- lapply(select(data_training_lasso,starts_with("Round_Drafted")), function(x) x*data_training_lasso$debut_before_1989)
-data_testing_lasso[names] <- lapply(select(data_testing_lasso,starts_with("Round_Drafted")), function(x) x*data_testing_lasso$debut_before_1989)
-```
 
 Below we are going to estimate the Lasso Regression model using the GLMNET function. This entails setting alpha = 1. It should be noted that by changing the family parameter to "binomial",the GLMNET function "fits a traditional logistic regression model for the log-odds" according to the documentation. For Lambda, we are using a sequence from -6 to 0 in increments of 0.5. 
 
