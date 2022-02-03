@@ -260,12 +260,12 @@ We now move on to first preparing the data for, and then fitting, models. Where 
 Using the "step_dummy" function from recipes (part of tidymodels), create dummy columns for the categoric variables (Round Drafted and Position). The function replaces the categoric variable by n-1 dummy columns, where n is the number of categories the variable can take, to avoid the dummy variable trap.
 
 ```{r create_indicators, warning=FALSE}
-# step_dummy doesn't give the first variable a dummy. We want this to be undrafted players, so we code it as 0 so it becomes the first value
+# step_dummy doesn't give the first value of the variable a dummy. For round drafted, it makes sense for this to be undrafted players, so we code U as 0 so it becomes the first value
 data$Round_Drafted[data$Round_Drafted == "U"] <- 0
 
 # define recipe - create dummies for round drafted and position
 dummy_multi_choice_rec <- recipe(~ ., data = data) %>%
-  step_dummy(Round_Drafted) %>% step_dummy(Position) %>%
+  step_dummy(Round_Drafted, Position) %>%
   prep()
 
 # execute the steps in the recipe
@@ -742,7 +742,9 @@ data_training_KNN <- data_training_lasso %>%
 data_testing_KNN <- data_testing_lasso %>%
   select(all_of(vars)) %>% bind_cols(outcome_testing)
 
-knn <- nearest_neighbor(mode = "classification", engine = "kknn", neighbors = round(sqrt(nrow(data_training)))) %>% 
+# use sqrt(training obs count) for k, as widely suggested 
+knn <- nearest_neighbor(mode = "classification", engine = "kknn",
+                        neighbors = round(sqrt(nrow(data_training)))) %>%
   fit(TARGET_5Yrs ~., data = data_training_KNN)
 
 predictions <- knn %>%
