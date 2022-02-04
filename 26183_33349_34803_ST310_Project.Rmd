@@ -231,7 +231,7 @@ We now move on to first preparing the data for, and then fitting, models. Where 
 Using the "step_dummy" function from recipes (part of tidymodels), we create dummy columns for the categorical variables (Round Drafted and Position). The function replaces each categorical variable by n-1 dummy columns, where n is the number of categories the variable can take, to avoid the dummy variable trap.
 
 ```{r create_indicators, warning=FALSE}
-# step_dummy doesn't give the first value of the variable a dummy. 
+# step_dummy doesn't give the first value of the variable a dummy.
 # For round drafted, it makes sense for this to be undrafted players
 # so we code U as 0 to make it the first value
 data$Round_Drafted[data$Round_Drafted == "U"] <- 0
@@ -360,7 +360,7 @@ Logistic regression uses *reference level coding*. The t-test compares each of t
 predictions_logistic <- logistic_model %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
- 
+
 # evaluation
 metrics_logistic <- evaluation_metrics(predictions_logistic, truth=TARGET_5Yrs, estimate = .pred_class) %>%
   mutate(model = "logistic")
@@ -629,7 +629,7 @@ svm_rbf <- svm_rbf() %>%
 predictions_svm_rbf <- svm_rbf %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-  
+
 # evaluation
 metrics_svm_rbf <- evaluation_metrics(predictions_svm_rbf, truth=TARGET_5Yrs, estimate = .pred_class) %>%
   mutate(model = "svm_rbf")
@@ -703,6 +703,7 @@ kable(metrics_tree)
 **Observations**
 
 * The tree classifier yields a balanced accuracy of 72.7%.
+* When compared with the baseline logistic regression model, the decision tree appears to marginally underperform. However, when considering the interpretations, the evidence suggests that these models are consistent. Looking at the baseline logistic regression coefficients, we see that the coefficients for GP, Win_Perc and Round_Drafted_X1 are statistically significant at the 5% significance level and are positive implying that increases in these variables are associated with an increase likelihood of making year 5.
 * The relatively lower predictive accuracy is compensated by the simplicity and the interpretability of the decision tree model. Since there are several other factors affecting a player's success in the NBA, some of which we can't control for in our models (such as genetic attributes, injury, nationality etc.), it is not surprising that our decision tree does not achieve an exceptionally high predictive accuracy. For what it is, the model seems to be performing reasonably well.
 
 ## Random Forests
@@ -790,16 +791,16 @@ Random forests achieve a balanced accuracy of 77.5% which is higher than our pre
 
 list = mget(ls(pattern="^metrics_"))
 all_metrics = bind_rows(list) %>%
-  pivot_wider(names_from = .metric, values_from = .estimate) #%>% 
+  pivot_wider(names_from = .metric, values_from = .estimate) #%>%
   # rename(model = model, "Balanced Accuracy" = bal_accuracy, "Specifity" = spec, "Sensitivity" = sens)
 
 # plot <- plot_ly(all_metrics, x = ~spec, y = ~sens, text = ~model, type = 'scatter', mode = 'markers',
 #         marker = list(size = ~bal_accuracy, opacity = 0.5))
-# 
+#
 # plot <- plot %>% layout(title = 'Gender Gap in Earnings per University',
 #          xaxis = list(showgrid = FALSE),
 #          yaxis = list(showgrid = FALSE))
-# 
+#
 # plot
 
 # ggplot(data = all_metric, aes(x = vis.df[,4],y = vis.df[,3], col = vis.df[,2])) +
@@ -817,3 +818,15 @@ ggplot(all_metrics, aes(x = spec, y = sens, col = bal_accuracy)) + geom_point(si
     low = "red", high = "green") + xlim(0.76, NA) + ylim(0.58, NA)
 
 ```
+We started this project with the hopes of better understand what factors contribute to the success of NBA Rookies and developing a model to predict the success of players. Our work above suggests that the key factors that contribute to an NBA Rookie’s success appear to revolve around a player’s ability to influence a game and the expectations around them.
+
+The results above regarding games played and other scoring metrics, reflect the ability of a player to influence games and the trajectory of a team through the season. We could argue that players who play more games are more likely to learn more and gain experiences that prove to be valuable as they develop.
+
+The information captured above regarding the impact of Win Percentage and Round Drafted, reflect the influence of expectations on players and what effect this has on their ability to thrive in the league. We could argue that teams that are winning are generally less likely to question their personnel decisions compared to losing teams. Also, we would argue that 1st round draft picks have much more leeway as coaches and general managers may believe that they have a higher ceiling.
+Based on the models we have built above, we could conclude that our SVM model would perform best in predicting the success of players based on their first year performance.
+
+Whilst we have considered several variables in our project. Again, there will be several factors that impact the likelihood that a player succeeds that we have not considered. Therefore, we cannot draw any causal conclusions about the relationship established above.
+
+Additionally, there are other nuances and perspectives that could be considered to further improve the accuracy of our models. For example, we did not consider the possibility that some teams may simply have a preference or general approach for drafting and developing talent. It is possible that these teams are more inclined to retain players regardless of their performance under certain conditions. Whilst this hypothesis is less likely to persist through time as General managers will have different philosophies, it is not impossible that some teams establish a culture of sorts, especially if ownership remains consistent.
+
+To develop this project further, getting granular data on player performance would allow us to measure characteristics like consistency or and absences due to injury or other reasons. Furthermore, collecting more data on what pick a player was in the draft could prove to be very insightful. Although we would have to account for the fact the NBA Draft changed to a lottery system in 2017 after teams were intentionally losing games to improve their position in the draft.
