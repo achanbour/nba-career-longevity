@@ -329,7 +329,7 @@ kable(data_training %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n
 
 #### A baseline: logistic regression with all predictors
 
-The model development section starts with a logistic regression model fit on all predictors, using tidymodels. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the t-tests in the summary below.
+The model development section starts with a logistic regression model fit on all predictors, using tidymodels. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the t-test statistics in the summary below.
 
 ```{r logistic_regression_model, warning=FALSE}
 logistic_model <- logistic_reg() %>%
@@ -341,7 +341,7 @@ kable(tidy(logistic_model) %>% arrange(p.value)) %>% scroll_box(height = "400px"
 
 *Note*: The logistic model includes one dummy variable for all but one level (the reference level) of each categorical variable.
 
-We can use the p-values or T-Test statistics shown in the output to conclude whether the variable coefficients are significant at the 5%? level. We are interested in whether the coefficients are statistically different from 0. In other words, we are interested in coefficients with p-values are below 0.05 or equivalently with T-Test Statistic values above 1.9600. We see that the coefficients statistically significant at the 5% significance level are:
+We can use the p-values or t-test statistics shown in the output to conclude whether the variable coefficients are significant at the 5% level. We are interested in whether the coefficients are statistically different from 0. In other words, we are interested in coefficients with p-values are below 0.05 or equivalently with t-test statistic values above 1.9600. We see that the coefficients statistically significant at the 5% significance level are:
 
 * GP: games played per season
 * Win_Perc: the winning percentage of the team the player plays for
