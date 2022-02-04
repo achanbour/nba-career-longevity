@@ -215,9 +215,12 @@ data %>%
 In basketball, we would expect better players to be drafted in an earlier round (with a lower round number) and the undrafted (U) players to be worse.
 
 There is a clear difference in the distribution of round numbers for those who reached 5 years and those who did not. Among those with TARGET_5Yrs = 1, more than 65% were drafted in the first round, and fewer than 10% were undrafted.
-We are then able to see that there is a slight difference in distribution of positions between those who made 5 years and those who didn't.
 
-We conclude that both these variables are likely to be relevant.
+**Position**
+
+We see that there is a slight difference in distribution of positions between those who made 5 years and those who didn't.
+
+We conclude that both round drafted and position are likely to be relevant.
 
 # III: Pre-processing Dataset
 
