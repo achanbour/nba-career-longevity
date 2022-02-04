@@ -186,7 +186,7 @@ correlations <- round(cor(as.numeric(data$TARGET_5Yrs), Filter(is.numeric, data)
 correlations[,order(abs(correlations),decreasing = TRUE)] # display, ordered by absolute values
 ```
 
-While the correlation coefficient only measures linear relationships, we conclude that metrics involving three-pointers, and years of draft and debut, are likely to be poor predictors of success. Interestingly, so too is team win percentage - suggesting players cannot simply ride the coattails of their team to achieve individual success.
+While the correlation coefficient only measures linear relationships, we conclude that metrics involving three-pointers are likely to be poor predictors of success. Interestingly, so too is team win percentage - suggesting players cannot simply ride the coattails of their team to achieve individual success.
 
 As we have a large number of predictors, this information may be used when deciding which predictors to include in certain models. 
 
@@ -227,7 +227,7 @@ data %>%
   select(Round_Drafted, TARGET_5Yrs) %>%
   group_by(Round_Drafted, TARGET_5Yrs) %>% tally() %>%
   group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c(seq(1, 10), "U")) + ylab("proportion of players drafted in the round, by outcome")
+  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + ylab("proportion of players drafted in the round, by outcome") # + scale_x_discrete(limits = c(seq(1, 10), "U"))
 
 # plot for position
 data %>%
@@ -245,9 +245,7 @@ There is a clear difference in the distribution of round numbers for those who r
 
 **Position**
 
-To give the order of the bars some meaning, we order by position on the field (i.e. point guards are furthest back, and small forwards furthest forward).
-
-We are then able to see that not only is there a slight difference in distribution of positions between those who made 5 years and those who didn't, but also the difference is successful players are slightly skewed towards attacking positions.
+We are then able to see that there is a slight difference in distribution of positions between those who made 5 years and those who didn't.
 
 We conclude that both these variables are likely to be of value. 
 
@@ -555,7 +553,8 @@ beta_hat2[which(rowSums(beta_hat2) > 0),] # print non-zero coefficients
 **Significant predictors**
 
 Logistic regression suggests: GP, Win_Perc, Year_Debut, Round_Drafted_X1, FG., X3P.Made, OREB
-LASSO suggests: GP, MIN, PTS, FG., FTM, OREB, Win_Perc, Round_Drafted_X1, Round_Drafted_1_before_1989
+
+LASSO suggests: "GP"", "MIN", "PTS", "FG.", "FTM", "OREB", "AST", "BLK", "Win_Perc", "Round_Drafted_X1", "Position_Point.guard", "Round_Drafted_1_before_1989"
 
 
 Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penalty increases. 
@@ -608,7 +607,7 @@ Looking at the Lasso results above, this subset of regressors appears to represe
 
 
 ```{r knn}
-vars_lasso_output <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "Win_Perc", "Round_Drafted_X1", "Round_Drafted_1_before_1989")
+vars_lasso_output <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "AST", "BLK", "Win_Perc", "Round_Drafted_X1", "Position_Point.guard", "Round_Drafted_1_before_1989")
 
 data_training_lasso_output <- data_training %>% select(c(all_of(vars_lasso_output),TARGET_5Yrs))
 data_testing_lasso_output <- data_testing %>% select(c(all_of(vars_lasso_output),TARGET_5Yrs))
@@ -625,7 +624,7 @@ predictions <- knn %>%
 kable(metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
-KNN yields an accuracy of nearly 77%, which is quite high considering it is a simple model. This suggests the LASSO variable selection worked well.
+KNN yields an accuracy of nearly 76%, which is quite high considering it is a simple model. This suggests the LASSO variable selection worked well.
 
 ## SVM
 #### High-dimensional, with a focus on predictive accuracy
@@ -652,7 +651,7 @@ predictions_svm <- svm_rbf %>%
 kable(metrics(predictions_svm, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
-The RBF Kernel yields a predictive accuracy of nearly 77%.
+The RBF Kernel yields a predictive accuracy of around 77%.
 
 ### SVM with a polynomial kernel
 
@@ -741,7 +740,7 @@ predictions_rf <- rf %>%
 kable(metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
-Random forests achieve a predictive accuracy of nearly 79% which is higher than our previous single decision tree classifier, as expected.
+Random forests achieve a predictive accuracy of nearly 80% which is higher than our previous single decision tree classifier, as expected.
 ```{r rf_probabilities_roc}
 #obtaining the probabilities for each possible predicted value
 predictions_probs <- rf %>%
