@@ -45,7 +45,7 @@ raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs) # treat outcome variable
 
 This dataset contains the key performance metrics of NBA players in their rookie (first) season in the NBA League and additional information about how they entered the league (The NBA Draft and the teams they were drafted to).
 
-The objective of this project is to build classification models to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
+The objective of this project is to build classification models to predict whether or not players will play at least 5 years in the NBA, given how they performed in their rookie season. We would like to better understand what factors make players more likely to thrive in the NBA. Given the term structure of rookie contracts, players who make it to year 5 have a higher chance of getting another contract and playing several more years.
 
 This dataset was collected from https://data.world/exercises/logistic-regression-exercise-1
 
@@ -329,7 +329,7 @@ kable(data_training %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n
 
 #### A baseline: logistic regression with all predictors
 
-The model development section starts with a logistic regression model fit on all predictors, using tidymodels. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the z-tests in the summary below.
+The model development section starts with a logistic regression model fit on all predictors, using tidymodels. As an introductory stage, the model will also be used to evaluate significance of our predictor variables according to the t-tests in the summary below.
 
 ```{r logistic_regression_model, warning=FALSE}
 logistic_model <- logistic_reg() %>%
@@ -341,12 +341,16 @@ kable(tidy(logistic_model) %>% arrange(p.value)) %>% scroll_box(height = "400px"
 
 *Note*: The logistic model includes one dummy variable for all but one level (the reference level) of each categorical variable.
 
-We can use the p-values shown in the output to conclude whether the variable coefficients are significant (at the 5% level). We see that the only significant coefficients (with p-value below 0.05?) are:
+We can use the p-values or T-Test statistics shown in the output to conclude whether the variable coefficients are significant at the 5%? level. We are interested in whether the coefficients are statistically different from 0. In other words, we are interested in coefficients with p-values are below 0.05 or equivalently with T-Test Statistic values above 1.9600. We see that the coefficients statistically significant at the 5% significance level are:
 
 * GP: games played per season
-* Year_Drafted: the year the player got drafted
 * Win_Perc: the winning percentage of the team the player plays for
 * Year_Debut: the year the player debuted his career
+* (Intercept):
+* Round_Drafted_X1: Indicator Variable for players drafted in Round 1 
+* FG.: Average field goal success percentage
+* X3P.Made: Average number of Three-Pointers made per game
+* OREB: Average number of offensive rebounds per game
 
 This is indeed a striking result: one might expect the game performance of a player to be indicative of his talent and therefore of his ability to go further in the NBA. With the debut and draft year variables being significant, there seems to be a time trend in the NBA drafting process whereby talented players tend to get drafted around the same time. A possible explanation is that drafting more talented players at the same time increases competitiveness in the league, pushing talented players to play even better and stay longer in the NBA.
 
