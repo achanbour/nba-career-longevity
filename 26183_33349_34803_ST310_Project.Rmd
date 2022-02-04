@@ -554,7 +554,7 @@ beta_hat2[which(rowSums(beta_hat2) > 0),] # print non-zero coefficients
 
 Logistic regression suggests: GP, Win_Perc, Year_Debut, Round_Drafted_X1, FG., X3P.Made, OREB
 
-LASSO suggests: "GP"", "MIN", "PTS", "FG.", "FTM", "OREB", "AST", "BLK", "Win_Perc", "Round_Drafted_X1", "Position_Point.guard", "Round_Drafted_1_before_1989"
+LASSO suggests: "GP", "MIN", "PTS", "FG.", "FTM", "FT.", "OREB", "AST", "BLK", "Win_Perc", "Round_Drafted_X1", "Position_Point.guard", "Round_Drafted_1_before_1989"
 
 
 Printing the coefficient estimates for a range of Lambdas was insightful as it was interesting to see what variables persist as the penalty increases. 
@@ -607,7 +607,7 @@ Looking at the Lasso results above, this subset of regressors appears to represe
 
 
 ```{r knn}
-vars_lasso_output <- c("GP", "MIN", "PTS", "FG.", "FTM", "OREB", "AST", "BLK", "Win_Perc", "Round_Drafted_X1", "Position_Point.guard", "Round_Drafted_1_before_1989")
+vars_lasso_output <- c("GP", "MIN", "PTS", "FG.", "FTM", "FT.", "OREB", "AST", "BLK", "Win_Perc", "Round_Drafted_X1", "Position_Point.guard", "Round_Drafted_1_before_1989")
 
 data_training_lasso_output <- data_training %>% select(c(all_of(vars_lasso_output),TARGET_5Yrs))
 data_testing_lasso_output <- data_testing %>% select(c(all_of(vars_lasso_output),TARGET_5Yrs))
@@ -624,7 +624,7 @@ predictions <- knn %>%
 kable(metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class))
 ```
 
-KNN yields an accuracy of nearly 76%, which is quite high considering it is a simple model. This suggests the LASSO variable selection worked well.
+KNN yields an accuracy of around 76%, which is reasonable considering it is a simple model. This suggests the LASSO variable selection worked well.
 
 ## SVM
 #### High-dimensional, with a focus on predictive accuracy
