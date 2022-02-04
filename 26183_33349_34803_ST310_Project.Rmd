@@ -31,6 +31,8 @@ library(class)
 # TREE
 library(rpart.plot)
 
+#library(plotly)
+
 raw_data <- read.csv("data_in/nba_logreg.csv")
 raw_data$TARGET_5Yrs <- as.factor(raw_data$TARGET_5Yrs) # treat outcome variable as binary factor
 
@@ -194,14 +196,18 @@ data %>%
   select(Round_Drafted, TARGET_5Yrs) %>%
   group_by(Round_Drafted, TARGET_5Yrs) %>% tally() %>%
   group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + ylab("proportion of players drafted in the round, by outcome") # + scale_x_discrete(limits = c(seq(1, 10), "U"))
+  ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(
+    stat = "identity", position = position_dodge()) + ylab(
+      "proportion of the outcome group's players drafted in the round") # + scale_x_discrete(limits = c(seq(1, 10), "U"))
 
 # plot for position
 data %>%
   select(Position, TARGET_5Yrs) %>%
   group_by(Position, TARGET_5Yrs) %>% tally() %>%
   group_by(TARGET_5Yrs) %>% mutate(proportion = n/sum(n)) %>%
-  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward")) + ylab("proportion of players drafted in that round") + ylab("proportion of players in the position, by outcome")
+  ggplot(aes(x = Position, y = proportion, fill = TARGET_5Yrs)) + geom_bar(
+    stat = "identity", position = position_dodge()) + ylab(
+      "proportion of the outcome group's players in the position") #+ scale_x_discrete(limits = c("Point guard", "Shooting guard", "Center", "Power forward", "Small forward"))
 ```
 
 **Round drafted**
@@ -222,7 +228,9 @@ We now move on to first preparing the data for, and then fitting, models. Where 
 Using the "step_dummy" function from recipes (part of tidymodels), we create dummy columns for the categorical variables (Round Drafted and Position). The function replaces each categorical variable by n-1 dummy columns, where n is the number of categories the variable can take, to avoid the dummy variable trap.
 
 ```{r create_indicators, warning=FALSE}
-# step_dummy doesn't give the first value of the variable a dummy. For round drafted, it makes sense for this to be undrafted players, so we code U as 0 so it becomes the first value
+# step_dummy doesn't give the first value of the variable a dummy. 
+# For round drafted, it makes sense for this to be undrafted players
+# so we code U as 0 to make it the first value
 data$Round_Drafted[data$Round_Drafted == "U"] <- 0
 
 # define recipe - create dummies for round drafted and position
@@ -252,7 +260,8 @@ data_to_split$debut_before_1989 <- ifelse(data_to_split$Year_Debut >= 1989, 0, 1
 names <- paste0("Round_Drafted_", c("1","10","2","3","4","5","6","7","8"), "_before_1989")
 
 # Create interaction columns for Round_Drafted_# with Year_debut_before_1989
-data_to_split[names] <- lapply(select(data_to_split,starts_with("Round_Drafted")), function(x) x*data_to_split$debut_before_1989)
+data_to_split[names] <- lapply(
+  select(data_to_split,starts_with("Round_Drafted")), function(x) x*data_to_split$debut_before_1989)
 ```
 
 When considering the effect of Round_Drafted:
@@ -286,7 +295,8 @@ data_split <- initial_split(data_to_split, strata = TARGET_5Yrs)
 data_training <- data_split %>% training()
 data_testing <- data_split %>% testing()
 
-sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)", nrow(data), nrow(data_training), nrow(data_testing))
+sprintf("Data had %s obs, now split into training (%s obs) and testing (%s obs)",
+        nrow(data), nrow(data_training), nrow(data_testing))
 
 # check proportions of outcome variable values are the same across training and testing
 kable(data_testing %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n),2)))
@@ -294,6 +304,16 @@ kable(data_training %>% count(TARGET_5Yrs) %>% mutate(proportion = round(n/sum(n
 ```
 
 # IV: Model development
+
+## Evaluation metrics
+
+We begin by thinking about which metrics will be most useful to calculate for each model.
+
+Our dataset is imbalanced, with 63% of players reaching 5 years, and 37% not reaching 5 years. Because of this, it would be misleading to use a simple accuracy metric. We will instead focus on **balanced** accuracy, which is the average of sensitivity (true positive rate) and specifity (true negative rate), which we will also inspect. This normalizes true positive and true negative predictions by the number of positive and negative observations respectively.
+
+```{r define_evaluation_metrics, warning=FALSE}
+evaluation_metrics <- metric_set(bal_accuracy, spec, sens)
+```
 
 ## Logistic regression
 
@@ -334,15 +354,17 @@ Logistic regression uses *reference level coding*. The t-test compares each of t
 
 ```{r logistic_evaluation, warning = FALSE}
 # predictions
-logistic_pred_results <- logistic_model %>%
+predictions_logistic <- logistic_model %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-
-#accuracy
-kable(metrics(logistic_pred_results, truth=TARGET_5Yrs, estimate = .pred_class))
+ 
+# evaluation
+metrics_logistic <- evaluation_metrics(predictions_logistic, truth=TARGET_5Yrs, estimate = .pred_class) %>%
+  mutate(model = "logistic")
+kable(metrics_logistic)
 ```
 
-The logistic regression model yields an accuracy of nearly 79%. For our classification task, this can be seen as a good score indicating that a linear classification boundary fits our data well.
+The logistic regression model yields a balanced accuracy of 76.6%. For our classification task, this can be seen as a good score indicating that a linear classification boundary fits our data well.
 
 ### Implementation of Gradient Descent
 
@@ -568,17 +590,23 @@ knn <- nearest_neighbor(mode = "classification", engine = "kknn",
                         neighbors = round(sqrt(nrow(data_training_lasso_output)))) %>%
   fit(TARGET_5Yrs ~., data = data_training_lasso_output)
 
-predictions <- knn %>%
+# predictions
+predictions_knn <- knn %>%
   predict(data_testing_lasso_output) %>%
   bind_cols(data_testing_lasso_output)
+
 #predictions$TARGET_5Yrs <- as.factor(predictions$TARGET_5Yrs)
-kable(metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class))
+#kable(metrics(predictions, truth=TARGET_5Yrs, estimate = .pred_class))
+
+# evaluation
+metrics_knn <- evaluation_metrics(predictions_knn, truth=TARGET_5Yrs, estimate = .pred_class) %>%
+  mutate(model = "knn")
+kable(metrics_knn)
 ```
 
-KNN yields an accuracy of around 76%, which is reasonable considering it is a simple model. This suggests the LASSO variable selection worked well.
+KNN yields a balanced accuracy of 73.2%, which is reasonable considering it is a simple model. This suggests the LASSO variable selection worked well.
 
 ## SVM
-#### High-dimensional, with a focus on predictive accuracy
 
 As a next step, we check for non-linearity using another classification approach - that of Support Vector Machines (SVM). SVM allows us to classify data points according to non-linear decision boundaries.
 
@@ -594,14 +622,18 @@ svm_rbf <- svm_rbf() %>%
   fit(TARGET_5Yrs ~ ., data = data_training)
 #svm_rbf
 
-## Predictions and model accuracy
-predictions_svm <- svm_rbf %>%
+# predictions
+predictions_svm_rbf <- svm_rbf %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-kable(metrics(predictions_svm, truth=TARGET_5Yrs, estimate = .pred_class))
+  
+# evaluation
+metrics_svm_rbf <- evaluation_metrics(predictions_svm_rbf, truth=TARGET_5Yrs, estimate = .pred_class) %>%
+  mutate(model = "svm_rbf")
+kable(metrics_svm_rbf)
 ```
 
-The RBF Kernel yields a predictive accuracy of around 77%.
+The RBF Kernel yields a balanced accuracy of 73.7%.
 
 ### SVM with a polynomial kernel
 
@@ -613,15 +645,20 @@ svm_poly <- svm_poly() %>%
   fit(TARGET_5Yrs ~., data=data_training)
 #svm_poly
 
-## Predictions and model accuracy
+# predictions
 predictions_svm_poly <- svm_poly %>%
   predict(data_testing) %>%
   bind_cols(data_testing)
-#predictions_svm_poly$TARGET_5Yrs <- as.factor(predictions_svm_poly$TARGET_5Yrs)
-kable(metrics(predictions_svm_poly, truth=TARGET_5Yrs, estimate = .pred_class))
-```
 
-The polynomial kernel yields an accuracy of nearly 79% which is a very marginal improvement on the radial kernel SVM model.
+#predictions_svm_poly$TARGET_5Yrs <- as.factor(predictions_svm_poly$TARGET_5Yrs)
+#kable(metrics(predictions_svm_poly, truth=TARGET_5Yrs, estimate = .pred_class))
+
+# evaluation
+metrics_svm_poly <- evaluation_metrics(predictions_svm_poly, truth=TARGET_5Yrs, estimate = .pred_class) %>%
+  mutate(model = "svm_poly")
+kable(metrics_svm_poly)
+```
+The polynomial kernel yields a balanced accuracy of 75.7% which is a marginal improvement on the radial kernel SVM model.
 
 ## Decision Tree
 ### An interpretable non-baseline model
@@ -640,11 +677,15 @@ tree %>%
   extract_fit_engine() %>%
   rpart.plot(roundint = FALSE, type = 5)
 
-##Predictions and model accuracy
+# predictions
 predictions_tree <- tree %>%
   predict(data_testing_lasso_output) %>%
   bind_cols(data_testing_lasso_output)
-kable(metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class))
+
+# evaluation
+metrics_tree <- evaluation_metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class) %>%
+  mutate(model = "decision_tree")
+kable(metrics_tree)
 ```
 
 **Interpretation of results**
@@ -658,10 +699,11 @@ kable(metrics(predictions_tree, truth=TARGET_5Yrs, estimate = .pred_class))
 
 **Observations**
 
-* The tree classifier yields an overall predictive accuracy of 74%.
+* The tree classifier yields a balanced accuracy of 72.7%.
 * The relatively lower predictive accuracy is compensated by the simplicity and the interpretability of the decision tree model. Since there are several other factors affecting a player's success in the NBA, some of which we can't control for in our models (such as genetic attributes, injury, nationality etc.), it is not surprising that our decision tree does not achieve an exceptionally high predictive accuracy. For what it is, the model seems to be performing reasonably well.
 
 ## Random Forests
+#### High-dimensional, with a focus on predictive accuracy
 
 To improve upon the performance of the decision tree classifier, we consider a random forest model. Random forests use decision trees as building blocks to construct more powerful predictive models.
 
@@ -678,40 +720,46 @@ rf <- rand_forest(trees = 100, mode="classification") %>%
     set_engine("randomForest") %>%
     fit(TARGET_5Yrs~., data = data_training)
 #rf
-## Predictions and model accuracy
+# predictions
 predictions_rf <- rf %>%
   predict(data_testing) %>%
   bind_cols(data_testing) #%>%
 #  glimpse()
+
 #using metrics to measure the performance of the model
 #predictions_rf$TARGET_5Yrs <- as.factor(predictions_rf$TARGET_5Yrs)
 #truth refers to the actual results and estimate refers to what the model predicted
-kable(metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class))
+#kable(metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class))
+
+# evaluation
+metrics_rf <- evaluation_metrics(predictions_rf, truth=TARGET_5Yrs, estimate = .pred_class) %>%
+  mutate(model = "random_forest")
+kable(metrics_rf)
 ```
 
-Random forests achieve a predictive accuracy of nearly 80% which is higher than our previous single decision tree classifier, as expected.
-```{r rf_probabilities_roc}
-#obtaining the probabilities for each possible predicted value
-predictions_probs <- rf %>%
-  predict(data_testing, type="prob") %>%
-  bind_cols(data_testing)
-#glimpse(predictions_probs)
+Random forests achieve a balanced accuracy of 77.5% which is higher than our previous single decision tree classifier, as expected.
+<!-- # ```{r rf_probabilities_roc} -->
+<!-- # #obtaining the probabilities for each possible predicted value -->
+<!-- # predictions_probs <- rf %>% -->
+<!-- #   predict(data_testing, type="prob") %>% -->
+<!-- #   bind_cols(data_testing) -->
+<!-- # #glimpse(predictions_probs) -->
+<!-- # -->
+<!-- # #plotting the results -->
+<!-- # predictions_probs %>% -->
+<!-- #   roc_curve(TARGET_5Yrs, .pred_0) %>% -->
+<!-- #   autoplot() -->
+<!-- # ``` -->
 
-#plotting the results
-predictions_probs %>%
-  roc_curve(TARGET_5Yrs, .pred_0) %>%
-  autoplot()
-```
+<!-- The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positive rate TPR) against 1-specificity (false positive rate FPR). It is known to be a good measure of the performance of a binary classifier. -->
 
-The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positive rate TPR) against 1-specificity (false positive rate FPR). It is known to be a good measure of the performance of a binary classifier.
+<!--  * *Specificity*: measure of a model's ability to predict true negatives. It measures the proportion of observations that were correctly predicted to be positive out of all negative observations. -->
 
- * *Specificity*: measure of a model's ability to predict true negatives. It measures the proportion of observations that were correctly predicted to be positive out of all negative observations.
+<!--  * *Sensitivity*: measure of a model's ability to predict true positives. It measures the proportion of observations that were correctly predicted to be positive out of all positive observations. -->
 
- * *Sensitivity*: measure of a model's ability to predict true positives. It measures the proportion of observations that were correctly predicted to be positive out of all positive observations.
+<!-- *Note*: The ROC measure is useful as it does not depend on the class distribution. -->
 
-*Note*: The ROC measure is useful as it does not depend on the class distribution.
-
- Our random forest classifier yields a ROC curve that is significantly above and far of the baseline 45 degrees line where FPR = TPR. This means our classifier gives fairly accurate results in accordance with its relatively high predictive accuracy.
+<!--  Our random forest classifier yields a ROC curve that is significantly above and far of the baseline 45 degrees line where FPR = TPR. This means our classifier gives fairly accurate results in accordance with its relatively high predictive accuracy. -->
 
 
 
@@ -734,3 +782,35 @@ The Receiver Operating Characteristic (ROC) curve plots sensitivity (true positi
 <!-- # accuracy on test data = 73.45679% -->
 
 # V: Conclusion
+
+```{r comparison_plot}
+
+list = mget(ls(pattern="^metrics_"))
+all_metrics = bind_rows(list) %>%
+  pivot_wider(names_from = .metric, values_from = .estimate) #%>% 
+  # rename(model = model, "Balanced Accuracy" = bal_accuracy, "Specifity" = spec, "Sensitivity" = sens)
+
+# plot <- plot_ly(all_metrics, x = ~spec, y = ~sens, text = ~model, type = 'scatter', mode = 'markers',
+#         marker = list(size = ~bal_accuracy, opacity = 0.5))
+# 
+# plot <- plot %>% layout(title = 'Gender Gap in Earnings per University',
+#          xaxis = list(showgrid = FALSE),
+#          yaxis = list(showgrid = FALSE))
+# 
+# plot
+
+# ggplot(data = all_metric, aes(x = vis.df[,4],y = vis.df[,3], col = vis.df[,2])) +
+#   geom_point(size = 3) +
+#   geom_text(aes(label = vis.df[,1]),hjust = -0.2 , vjust = 0.4,size =2.5) +
+#   labs(title = "Comparison of Model Performance", x ="Sensitivity", y ="Specificity", col = "Balanced Accuracy", size = "Balanced Accuracy")+
+#   xlim(0.65,1.002)+
+#   ylim(0.983,1.002)+
+#   scale_color_gradient(low = "yellow", high = "red")
+
+  # ggplot(aes(x = Round_Drafted, y = proportion, fill = TARGET_5Yrs)) + geom_bar(stat = "identity", position = position_dodge()) + ylab("proportion of players drafted in the round, by outcome")
+
+ggplot(all_metrics, aes(x = spec, y = sens, col = bal_accuracy)) + geom_point(size = 5) + geom_text(
+  aes(label = model), size = 4, hjust = 1.15, vjust = 1.15) + scale_color_gradient(
+    low = "red", high = "green") + xlim(0.76, NA) + ylim(0.58, NA)
+
+```
