@@ -453,7 +453,7 @@ gradient_descent <- function(X, y, loss_function) {
 We now apply the gradient-descent algorithm to estimate the coefficients of a logistic regression of our target on a subset of predictors.
 
 The chosen predictors are likely to be weakly correlated, hence they avoid a potential multicollinearity problem in our model.
-The chosen predictors have p-value below 0.05 aned capture the most prominent factors affecting the performance of a player in the NBA.
+The chosen predictors have p-value below 0.05 and capture the most prominent factors affecting the performance of a player in the NBA.
 The predictors are: games played, winning percentage of the team, year of debut, drafted in the first round, field goals percentage, three pointers made and offensive rebound.
 
 
