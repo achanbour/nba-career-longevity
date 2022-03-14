@@ -4,7 +4,7 @@ This group project was accomplished as a coursework for the ST311 Machine Learni
 
 This project is about applying machine learning methods in R to predict the career longevity of an NBA player.
 
-Rendered project: [final_render in html](./html_knitted.html)
+Rendered project: [final_render in html](https://achanbour.github.io/#distributions-of-character-variables-by-outcome)
 
 
 ## Original dataset
