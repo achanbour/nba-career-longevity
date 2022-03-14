@@ -4,5 +4,10 @@ This group project was accomplished as a coursework for the ST311 Machine Learni
 
 This project is about applying machine learning methods in R to predict the career longevity of an NBA player.
 
+Rendered project: [final_render in html](./html_knitted.html)
+
+
 ## Original dataset
 https://data.world/exercises/logistic-regression-exercise-1
+
+
