@@ -1,6 +1,3 @@
-# HTML from knit Rmd
-*.html
-
 # History files
 .Rhistory
 .Rapp.history
